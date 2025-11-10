@@ -1,5 +1,5 @@
 import streamlit as st
-from codebase_pipeline import *
+from pipeline import *
 from dotenv import load_dotenv
 
 load_dotenv()
