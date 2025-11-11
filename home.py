@@ -5,7 +5,13 @@ from dotenv import load_dotenv
 load_dotenv()
 pipeline = CodebasePipeline()
 
-st.title("Boeing 2")
+input_path = os.getenv("INPUT_PATH")
+output_path = os.getenv("OUTPUT_PATH")
+os.makedirs(input_path, exist_ok=True)
+os.makedirs(output_path, exist_ok=True)
+
+st.title("Code Modernizer")
+st.subheader("Boeing Group #2")
 
 if 'messages' not in st.session_state:
     st.session_state.messages = []
@@ -14,20 +20,19 @@ for message in st.session_state.messages:
     st.chat_message(message['role']).markdown(message['content'])
 
 uploaded_files = st.file_uploader(
-    "Multiple Image Uploader", 
-    type=DEFAULT_EXTS, 
-    help="Upload code files", 
+    "Upload Code Files", 
+    type=DEFAULT_EXTS,
     accept_multiple_files=True
 )
-details = st.button("Check Details", key=420)
+
 for uploaded_file in uploaded_files:
-    if details:
-        if uploaded_file is not None:
-            bytes_data = uploaded_file.read()
-            st.write("file_name:", uploaded_file.name)
-        else:
-            st.write("No Image File is Uploaded")
-            break
+    # Read the file data
+    bytes_data = uploaded_file.read()
+    
+    # Save the file to input_path
+    file_path = os.path.join(input_path, uploaded_file.name)
+    with open(file_path, "wb") as f:
+        f.write(bytes_data)
 
 prompt = st.chat_input("Please explain what you would like me to do!")
 
