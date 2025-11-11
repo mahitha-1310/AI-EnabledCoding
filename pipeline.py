@@ -5,9 +5,7 @@ from openai import OpenAI
 from openai import AuthenticationError
 from dotenv import load_dotenv
 
-load_dotenv()
-
-DEFAULT_EXTS = ['.c'] # ['.py', '.js', '.java', '.cpp', '.c', '.ts', '.jsx', '.tsx']
+DEFAULT_EXTS = ['.py', '.js', '.java', '.cpp', '.c', '.ts', '.jsx', '.tsx']
 DEFAULT_DIRS = {'node_modules', '.git', '__pycache__', 'venv', '.venv', 'dist', 'build'}
 
 TEMPERATURE = 0.7
@@ -26,7 +24,11 @@ class CodebasePipeline:
             api_key: OpenAI API key (defaults to OPENAI_API_KEY env var)
             model: Model to use (defaults to OPENAI_API_MODEL env var)
         """
-        self.client = OpenAI(api_key=api_key or os.getenv("OPENAI_API_KEY"))
+        load_dotenv()
+        self.client = OpenAI(
+            api_key=api_key or os.getenv("OPENAI_API_KEY"),
+            base_url=os.getenv("OPENAI_API_BASE")
+        )
         self.model = model or os.getenv("OPENAI_API_MODEL")
         self.conversation_history = []
         self.current_codebase = {}
@@ -328,32 +330,32 @@ Here is the codebase:
         if output_path is None:
             raise ValueError("output_path cannot be None. Please provide a valid directory path.")
 
-        try:
-            print("Step 1: Collecting codebase...")
-            codebase = self.collect_codebase(input_path, extensions)
-            print(f"Found {len(codebase)} files.")
-            
-            print("\nStep 2: Processing with LLM...")
-            text_response, modified_codebase = self.process_with_llm(
-                codebase, instruction, return_code
-            )
-            
-            print("\n" + "="*50)
-            print("LLM Response:")
-            print("="*50)
-            print(text_response)
-            print("="*50 + "\n")
-            
-            if return_code and modified_codebase:
-                # If code output is requested:
-                print(f"Received {len(modified_codebase)} files from LLM.")
-                print("\nStep 3: Writing output...")
-                self.write_codebase(modified_codebase, output_path)
-                print("\nPipeline complete!")
-            else:
-                # If no code output is requested:
-                print("\nPipeline complete!")
-        except AuthenticationError as e:
-            text_response = "No OpenAI API Key was provided."
+        # try:
+        print("Step 1: Collecting codebase...")
+        codebase = self.collect_codebase(input_path, extensions)
+        print(f"Found {len(codebase)} files.")
+        
+        print("\nStep 2: Processing with LLM...")
+        text_response, modified_codebase = self.process_with_llm(
+            codebase, instruction, return_code
+        )
+        
+        print("\n" + "="*50)
+        print("LLM Response:")
+        print("="*50)
+        print(text_response)
+        print("="*50 + "\n")
+        
+        if return_code and modified_codebase:
+            # If code output is requested:
+            print(f"Received {len(modified_codebase)} files from LLM.")
+            print("\nStep 3: Writing output...")
+            self.write_codebase(modified_codebase, output_path)
+            print("\nPipeline complete!")
+        else:
+            # If no code output is requested:
+            print("\nPipeline complete!")
+        # except AuthenticationError as e:
+        #     text_response = "No OpenAI API Key was provided."
         
         return text_response
