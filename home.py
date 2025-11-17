@@ -2,7 +2,6 @@ import streamlit as st
 from pipeline import *
 from dotenv import load_dotenv
 import streamlit as st
-import hashlib
 import uuid
 
 def get_or_create_user_id():

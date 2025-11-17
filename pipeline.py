@@ -2,10 +2,8 @@ import os
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 from openai import OpenAI
-from openai import AuthenticationError
 from dotenv import load_dotenv
 import logging
-from datetime import datetime
 
 DEFAULT_EXTS = ['.py', '.js', '.java', '.cpp', '.c', '.ts', '.jsx', '.tsx']
 DEFAULT_DIRS = {'node_modules', '.git', '__pycache__', 'venv', '.venv', 'dist', 'build'}
