@@ -2,12 +2,10 @@ import os
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 from openai import OpenAI
-from openai import AuthenticationError
 from dotenv import load_dotenv
+import logging
 
-load_dotenv()
-
-DEFAULT_EXTS = ['.c'] # ['.py', '.js', '.java', '.cpp', '.c', '.ts', '.jsx', '.tsx']
+DEFAULT_EXTS = ['.py', '.js', '.java', '.cpp', '.c', '.ts', '.jsx', '.tsx']
 DEFAULT_DIRS = {'node_modules', '.git', '__pycache__', 'venv', '.venv', 'dist', 'build'}
 
 TEMPERATURE = 0.7
@@ -26,7 +24,11 @@ class CodebasePipeline:
             api_key: OpenAI API key (defaults to OPENAI_API_KEY env var)
             model: Model to use (defaults to OPENAI_API_MODEL env var)
         """
-        self.client = OpenAI(api_key=api_key or os.getenv("OPENAI_API_KEY"))
+        load_dotenv()
+        self.client = OpenAI(
+            api_key=api_key or os.getenv("OPENAI_API_KEY"),
+            base_url=os.getenv("OPENAI_API_BASE")
+        )
         self.model = model or os.getenv("OPENAI_API_MODEL")
         self.conversation_history = []
         self.current_codebase = {}
@@ -162,7 +164,7 @@ class CodebasePipeline:
             "content": "I've reviewed the codebase. How can I help you with it?"
         })
     
-    def chat(self, message: str, return_code: bool = False) -> Tuple[str, Optional[Dict[str, str]]]:
+    def chat(self, message: str) -> Tuple[str, Optional[Dict[str, str]]]:
         """
         Send a message in the ongoing conversation.
         
@@ -173,23 +175,11 @@ class CodebasePipeline:
         Returns:
             Tuple of (text_response, optional_codebase_dict)
         """
-        # Build the prompt
-        if return_code:
-            full_message = f"""{message}
-
-Please provide:
-1. A summary or explanation of the changes
-2. The entire modified codebase with each file clearly marked:
-
-=== path/to/file.ext ===
-<file contents>"""
-        else:
-            full_message = message
         
         # Add user message to history
         self.conversation_history.append({
             "role": "user",
-            "content": full_message
+            "content": message
         })
         
         # Make API call with full conversation history
@@ -211,13 +201,10 @@ Please provide:
         })
         
         # Parse response
-        if return_code:
-            text_response, modified_codebase = self.parse_codebase_response(llm_response)
-            if modified_codebase:
-                self.current_codebase = modified_codebase
-            return text_response, modified_codebase
-        else:
-            return llm_response, None
+        text_response, modified_codebase = self.parse_codebase_response(llm_response)
+        if modified_codebase:
+            self.current_codebase = modified_codebase
+        return text_response, modified_codebase
     
     def reset_conversation(self):
         """Clear conversation history and current codebase."""
@@ -242,22 +229,16 @@ Please provide:
         
 ######## SYSTEM PROMPT ########
 
-        if return_code:
-            prompt = f"""{instruction}
+        prompt = f"""{instruction}
 
 Please provide:
-1. A summary or explanation of the changes you're making
-2. The entire modified codebase in the same format, with each file clearly marked:
+1. A summary or explanation of the changes you have made
+2. The entire modified codebase with each file clearly marked if any changes are made to the code. 
+3. If code is provided in your response, format it like this:
 
-=== path/to/file.ext ===
+```<language>
 <file contents>
-
-Here is the codebase:
-
-{formatted_codebase}"""
-
-        else:
-            prompt = f"""{instruction}
+```
 
 Here is the codebase:
 
@@ -308,8 +289,7 @@ Here is the codebase:
             return
         self.write_codebase(self.current_codebase, output_path)
     
-    def run(self, input_path: str, output_path: str, instruction: str, 
-            extensions: List[str] = None, return_code: bool = True) -> str:
+    def run(self, instruction: str, user_id: str, input_path: str, output_path: str, extensions: List[str] = None) -> str:
         """
         Run the complete pipeline (single-shot, no conversation).
         
@@ -323,37 +303,40 @@ Here is the codebase:
         Returns:
             Text response from the LLM
         """
+
+        logging.basicConfig(
+            filename='llm_queries.log',
+            level=logging.INFO,
+            format='%(asctime)s - %(message)s'
+        )
+
+        logging.info(f"User: {user_id} | Query: {instruction}")
+
         if input_path is None:
             raise ValueError("input_path cannot be None. Please provide a valid directory path.")
         if output_path is None:
             raise ValueError("output_path cannot be None. Please provide a valid directory path.")
 
-        try:
-            print("Step 1: Collecting codebase...")
-            codebase = self.collect_codebase(input_path, extensions)
-            print(f"Found {len(codebase)} files.")
-            
-            print("\nStep 2: Processing with LLM...")
-            text_response, modified_codebase = self.process_with_llm(
-                codebase, instruction, return_code
-            )
-            
-            print("\n" + "="*50)
-            print("LLM Response:")
-            print("="*50)
-            print(text_response)
-            print("="*50 + "\n")
-            
-            if return_code and modified_codebase:
-                # If code output is requested:
-                print(f"Received {len(modified_codebase)} files from LLM.")
-                print("\nStep 3: Writing output...")
-                self.write_codebase(modified_codebase, output_path)
-                print("\nPipeline complete!")
-            else:
-                # If no code output is requested:
-                print("\nPipeline complete!")
-        except AuthenticationError as e:
-            text_response = "No OpenAI API Key was provided."
+        print("Collecting codebase...")
+        codebase = self.collect_codebase(input_path, extensions)
+        print(f"Found {len(codebase)} files.")
+        
+        print("\nProcessing with LLM...")
+        text_response, modified_codebase = self.process_with_llm(
+            codebase, instruction
+        )
+        
+        print("\n" + "="*50)
+        print("LLM Response:")
+        print("-"*50)
+        print(text_response)
+        print("="*50 + "\n")
+        
+        if modified_codebase:
+            # If code output is requested:
+            print(f"Received {len(modified_codebase)} files from LLM.")
+            print("\nWriting output...")
+            self.write_codebase(modified_codebase, output_path)
+            print("\nPipeline complete!")
         
         return text_response
