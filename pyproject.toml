@@ -5,6 +5,8 @@ description = "A Streamlit app pondering chicken dreams"
 requires-python = ">=3.11"
 dependencies = [
     "streamlit",
+    "openai",
+    "dotenv"
 ]
 
 [build-system]
