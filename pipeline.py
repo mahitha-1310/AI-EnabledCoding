@@ -8,6 +8,9 @@ import logging
 DEFAULT_EXTS = ['.py', '.js', '.java', '.cpp', '.c', '.ts', '.jsx', '.tsx']
 DEFAULT_DIRS = {'node_modules', '.git', '__pycache__', 'venv', '.venv', 'dist', 'build'}
 
+BEGIN_DELIMITER = '~~~```'
+END_DELIMITER = '```~~~'
+
 TEMPERATURE = 0.7
 SYSTEM_PROMPT = """
 You are a helpful coding assistant. Return code in the exact format requested.
@@ -94,7 +97,7 @@ class CodebasePipeline:
         # Iterate through each file in the codebase
         for file_path, content in codebase.items():
             # Format each file with clear delimiters and its content
-            formatted.append(f"=== {file_path} ===\n{content}\n")
+            formatted.append(f"{file_path}\n{BEGIN_DELIMITER}\n{content}\n{END_DELIMITER}")
         
         # Join all files with newlines into a single string
         return "\n".join(formatted)
@@ -114,29 +117,47 @@ class CodebasePipeline:
         current_file = None
         current_content = []
         text_response_lines = []
-        in_codebase = False
+        in_code_block = False
         
         for line in lines:
-            if line.startswith('=== ') and line.endswith(' ==='):
-                in_codebase = True
-                # Save previous file if exists
-                if current_file:
-                    codebase[current_file] = '\n'.join(current_content).strip()
-                
-                # Start new file
-                current_file = line[4:-4].strip()
-                current_content = []
+            # Start code block
+            if line.strip().startswith(BEGIN_DELIMITER):
+                in_code_block = True
+                continue
             
-            elif current_file:
+            # End code block
+            elif line.strip().startswith(END_DELIMITER):
+                # Save the current file
+                if current_file and current_content:
+                    codebase[current_file] = '\n'.join(current_content)
+                    current_file = None
+                    current_content = []
+                in_code_block = False
+                continue 
+            
+            # If we're in a code block, collect the content
+            if in_code_block:
                 current_content.append(line)
             
-            elif not in_codebase:
-                # Collect lines before codebase starts
-                text_response_lines.append(line)
+            # If we see a potential filename (before code block starts)
+            elif not in_code_block and line.strip() and not line.strip().startswith(BEGIN_DELIMITER):
+                # Check if next lines might contain a code block
+                # This could be a filename
+                if current_file is None and len(line.strip()) > 0:
+                    # Look ahead to see if this is followed by a code delimiter
+                    # For now, collect as potential filename
+                    potential_file = line.strip()
+                    # Check if it looks like a file path
+                    if '.' in potential_file or '/' in potential_file:
+                        current_file = potential_file
+                    else:
+                        text_response_lines.append(line)
+                else:
+                    text_response_lines.append(line)
         
-        # Save last file
-        if current_file:
-            codebase[current_file] = '\n'.join(current_content).strip()
+        # Save last file if exists
+        if current_file and current_content:
+            codebase[current_file] = '\n'.join(current_content)
         
         text_response = '\n'.join(text_response_lines).strip()
         return text_response, codebase
@@ -170,10 +191,9 @@ class CodebasePipeline:
         
         Args:
             message: Your message/instruction
-            return_code: Whether to expect and parse code in the response
             
         Returns:
-            Tuple of (text_response, optional_codebase_dict)
+            Tuple of (text_response, codebase_dict)
         """
         
         # Add user message to history
@@ -231,14 +251,17 @@ class CodebasePipeline:
 
         prompt = f"""{instruction}
 
-Please provide:
-1. A summary or explanation of the changes you have made
-2. The entire modified codebase with each file clearly marked if any changes are made to the code. 
-3. If code is provided in your response, format it like this:
+IMPORTANT: If you make any code changes, you MUST return the complete modified codebase.
 
-```<language>
-<file contents>
-```
+Format your response as follows:
+1. First, provide a brief summary of changes
+2. If you are about to make a file, give it an appropriate and relevant filename and extension like so: `<filename>.<extension>`
+3. Then, provide each modified file in this EXACT format:
+
+`<filename>.<extension>`
+~~~```
+<entire file contents here>
+```~~~
 
 Here is the codebase:
 
@@ -258,6 +281,7 @@ Here is the codebase:
         llm_response = response.choices[0].message.content
         
         if return_code:
+            print(return_code)
             text_response, modified_codebase = self.parse_codebase_response(llm_response)
             return text_response, modified_codebase
         else:
@@ -316,27 +340,33 @@ Here is the codebase:
             raise ValueError("input_path cannot be None. Please provide a valid directory path.")
         if output_path is None:
             raise ValueError("output_path cannot be None. Please provide a valid directory path.")
+        if BEGIN_DELIMITER == '':
+            raise ValueError("Begining delimiter cannot be empty.")
+        if END_DELIMITER == '':
+            raise ValueError("Ending delimiter cannot be empty.")
 
         print("Collecting codebase...")
-        codebase = self.collect_codebase(input_path, extensions)
-        print(f"Found {len(codebase)} files.")
+        input_codebase = self.collect_codebase(input_path, extensions)
+        print(f"Found {len(input_codebase)} files.")
         
         print("\nProcessing with LLM...")
-        text_response, modified_codebase = self.process_with_llm(
-            codebase, instruction
+        text_response, output_codebase = self.process_with_llm(
+            input_codebase, instruction
         )
         
-        print("\n" + "="*50)
-        print("LLM Response:")
-        print("-"*50)
-        print(text_response)
-        print("="*50 + "\n")
+        # sz = 50
+        # print("\n" + "="*sz)
+        # print("LLM Response:")
+        # print("-"*sz)
+        # print(text_response)
+        # print("="*sz + "\n")
         
-        if modified_codebase:
+        print(output_codebase)
+        if output_codebase:
             # If code output is requested:
-            print(f"Received {len(modified_codebase)} files from LLM.")
+            print(f"Received {len(output_codebase)} files from LLM.")
             print("\nWriting output...")
-            self.write_codebase(modified_codebase, output_path)
+            self.write_codebase(output_codebase, output_path)
             print("\nPipeline complete!")
         
         return text_response
