@@ -47,8 +47,6 @@ class CompilationStage:
         else:
             # self.run_via_build_tool()
             results = {"error": "build tool functionality not yet supported"}
-        
-        print(f"results: \n{results}")
 
         # Log results to files in `logs/` subdirectory
         self.write_logs(results)
