@@ -1,6 +1,10 @@
 # Use an official Python runtime as a parent image
 FROM python:3.11-slim
 
+# Install clang
+RUN apt-get update && \
+    apt-get install -y clang
+
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
