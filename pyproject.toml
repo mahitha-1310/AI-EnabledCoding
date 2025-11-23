@@ -6,7 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
     "streamlit",
     "openai",
-    "dotenv"
+    "python-dotenv"
 ]
 
 [build-system]
