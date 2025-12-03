@@ -19,11 +19,11 @@ class ValidationPipeline:
 
         # Pipeline stages
         self.compilation = CompilationStage(os.path.join(output_dir, "compilation/"))
-        # self.static_analysis = StaticAnalysisStage(output_dir)
+        # self.static_analysis = StaticAnalysisStage(os.path.join(output_dir, "static_analysis/"))
 
         # To be implemented in future sprints
         # ====================================
-        # self.dynamic_analysis = DynamicAnalysisStage(output_dir)
+        # self.dynamic_analysis = DynamicAnalysisStage(os.path.join(output_dir, "dynamic_analysis/"))
         # self.style_analysis = StyleAnalysisStage(output_dir)
         # self.unit_tester = UnitTestStage(output_dir)
 
@@ -59,7 +59,7 @@ class ValidationPipeline:
 
         return results
 
-    def collect_file_paths(self) -> (List[str], List[str], str):
+    def collect_file_paths(self) -> tuple[List[str], List[str], str]:
         """
         Iterate thru LLM output directory and extract:
             - .c files
