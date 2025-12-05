@@ -22,10 +22,10 @@ class CodebasePipeline:
             base_url=base_url or os.getenv("OPENAI_API_BASE")
         )
         self.model = model or os.getenv("OPENAI_API_MODEL")
-
         self.system_prompt = os.getenv("SYSTEM_PROMPT")
-        self.temperature = os.getenv("TEMPERATURE")
-        self.loop_count = os.getenv("LOOP_COUNT")
+
+        self.temperature = float(os.getenv("TEMPERATURE"))
+        self.loop_count = int(os.getenv("LOOP_COUNT"))
 
         # self.conversation_history = []
         # self.current_codebase = {}
@@ -79,7 +79,7 @@ class CodebasePipeline:
             ]
         }
 
-    def react_loop(self, context, max_loops = 0):
+    def react_loop(self, context, max_loops):
         # Send user input to LLM
         response = self.client.chat.completions.create(
             model=self.model,
@@ -90,15 +90,14 @@ class CodebasePipeline:
 
         message = response.choices[0].message
 
-        if message.tool_calls:
+        # Does LLM want to call more tools?
+        if message.tool_calls and max_loops > 0:
             # Send the response back to the context!
             context.append(self.tool_json(message))
             # Execute each tool call
             self.use_tools(context, message)
 
-            # Does LLM want to call more tools?
-            if max_loops > 0 and message.tool_calls:
-                message = self.react_loop(response, context, max_loops-1)
+            message = self.react_loop(response, context, max_loops-1)
         
         return response
             
@@ -128,6 +127,7 @@ class CodebasePipeline:
 
         # Go through loop of response and tool calling
         response = self.react_loop(context, self.loop_count)
+
         message = response.choices[0].message
         
         if message.content:
