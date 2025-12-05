@@ -57,13 +57,11 @@ if __name__ == '__main__':
     prompt = st.chat_input("Please explain what you would like me to do!")
 
     if prompt and (not prompt.strip() == ""):
-        st.chat_message('user').markdown(prompt)
-        st.session_state.messages.append({'role':'user', 'content':prompt})
+        # st.chat_message('user').markdown(prompt)
+        # st.session_state.messages.append({'role': 'user', 'content': prompt})
         response = pipeline.run(
-            instruction=prompt,
-            user_id=user_id,
-            input_path=os.getenv("INPUT_PATH"),
-            output_path=os.getenv("OUTPUT_PATH")
+            user_input=prompt,
+            user_id=user_id
         )
         st.chat_message('assistant').markdown(response)
-        st.session_state.messages.append({'role':'assistant', 'content':response})
+        # st.session_state.messages.append({'role': 'assistant', 'content': response})
