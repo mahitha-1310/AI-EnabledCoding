@@ -1,33 +1,12 @@
 import streamlit as st
 from pipeline import *
+from utils import *
 from dotenv import load_dotenv
 import streamlit as st
-import uuid
-
-def get_or_create_user_id():
-    # Try to get from session state first
-    if 'user_id' not in st.session_state:
-        # Check if returning user (via query params)
-        if 'uid' in st.query_params:
-            st.session_state.user_id = st.query_params['uid']
-        else:
-            # New user - generate ID
-            new_id = str(uuid.uuid4())
-            st.session_state.user_id = new_id
-            # Optionally set in URL (persists across page refreshes)
-            st.query_params['uid'] = new_id
-    
-    return st.session_state.user_id
 
 load_dotenv()
 pipeline = CodebasePipeline()
-
-input_path = os.getenv("INPUT_PATH")
-output_path = os.getenv("OUTPUT_PATH")
-os.makedirs(input_path, exist_ok=True)
-os.makedirs(output_path, exist_ok=True)
-
-user_id = get_or_create_user_id()
+user_id = generate_user_id()
 
 if __name__ == '__main__':
     st.title("Code Modernizer")
@@ -41,7 +20,7 @@ if __name__ == '__main__':
 
     uploaded_files = st.file_uploader(
         "Upload Code Files", 
-        type=DEFAULT_EXTS,
+        type=os.getenv("DEFAULT_EXTS"),
         accept_multiple_files=True
     )
 
@@ -50,7 +29,7 @@ if __name__ == '__main__':
         bytes_data = uploaded_file.read()
         
         # Save the file to input_path
-        file_path = os.path.join(input_path, uploaded_file.name)
+        file_path = os.path.join(os.getenv("EDITOR_PATH"), uploaded_file.name)
         with open(file_path, "wb") as f:
             f.write(bytes_data)
 

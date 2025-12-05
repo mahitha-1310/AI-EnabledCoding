@@ -1,15 +1,6 @@
 import base64
-from pathlib import Path
 from typing import Dict, Any
-import os
-
-def getpath(path:str): 
-    tail = os.getenv("EDITOR_PATH")
-
-    if tail is None:
-        raise ValueError("input_path cannot be None. Please provide a valid directory path.")
-
-    return Path(tail, path)
+from utils import *
 
 def read(path: str, encoding: str = "utf-8") -> Dict[str, Any]:
     """

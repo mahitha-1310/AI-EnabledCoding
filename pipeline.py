@@ -1,14 +1,9 @@
 import os
 from typing import List
 from openai import OpenAI
-import openai
-from dotenv import load_dotenv
 import logging
 from tools import *
 import json
-
-DEFAULT_EXTS = ['.py', '.js', '.java', '.cpp', '.c', '.ts', '.jsx', '.tsx']
-DEFAULT_DIRS = {'node_modules', '.git', '__pycache__', 'venv', '.venv', 'dist', 'build'}
 
 class CodebasePipeline:
     """Pipeline for processing codebases through an LLM with conversation memory."""
@@ -22,7 +17,6 @@ class CodebasePipeline:
             model: Model to use (defaults to OPENAI_API_MODEL env var)
         """
 
-        load_dotenv()
         self.client = OpenAI(
             api_key=api_key or os.getenv("OPENAI_API_KEY"),
             base_url=base_url or os.getenv("OPENAI_API_BASE")
