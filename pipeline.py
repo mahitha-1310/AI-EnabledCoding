@@ -1,5 +1,4 @@
 import os
-from typing import List
 from openai import OpenAI
 import logging
 from tools import *
@@ -102,16 +101,13 @@ class CodebasePipeline:
         return response
             
 
-    def run(self, user_input: str, user_id: str, extensions: List[str] = None) -> str:
+    def run(self, user_input: str, user_id: str) -> str:
         """
         Run the complete pipeline (single-shot, no conversation).
         
         Args:
-            input_path: Path to input codebase
-            output_path: Path to write output codebase
-            instruction: Instructions for the LLM
-            extensions: File extensions to include
-            return_code: Whether to request and write modified code
+            user_input: Instructions for the LLM
+            user_id: Indicates a distinct user of the LLM service
             
         Returns:
             Text response from the LLM
