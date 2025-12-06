@@ -162,9 +162,10 @@ TOOLS = {
     "find": find
 }
 
-SCHEMAS = {
-    "tools": [
-        {
+SCHEMAS = [
+    {
+        "type": "function",
+        "function": {
             "name": "read",
             "description": "Read content from a file.",
             "parameters": {
@@ -172,101 +173,77 @@ SCHEMAS = {
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "The file path to read (e.g., '/path/to/file.txt', 'C:\\Users\\file.txt')"
+                        "description": "The file path to read."
                     },
                     "encoding": {
                         "type": "string",
                         "enum": ["utf-8", "ascii", "base64"],
-                        "description": "Encoding format for the content. Defaults to 'utf-8'",
                         "default": "utf-8"
                     }
                 },
                 "required": ["path"]
             }
-        },
-        {
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "write",
             "description": "Write or update content to a file.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "The file path to write to (e.g., '/path/to/file.txt')"
-                    },
-                    "content": {
-                        "type": "string",
-                        "description": "The content to write to the file"
-                    },
+                    "path": {"type": "string"},
+                    "content": {"type": "string"},
                     "encoding": {
                         "type": "string",
                         "enum": ["utf-8", "ascii"],
-                        "description": "Encoding format for the content. Defaults to 'utf-8'",
                         "default": "utf-8"
                     },
                     "mode": {
                         "type": "string",
                         "enum": ["overwrite", "append"],
-                        "description": "Write mode: 'overwrite' replaces content, 'append' adds to end",
                         "default": "overwrite"
                     },
                     "create_directories": {
                         "type": "boolean",
-                        "description": "If true, create parent directories if they don't exist",
                         "default": False
                     }
                 },
                 "required": ["path", "content"]
             }
-        },
-        {
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "remove",
             "description": "Remove or delete a file or directory.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "The file or directory path to remove"
-                    },
-                    "recursive": {
-                        "type": "boolean",
-                        "description": "If true, recursively remove directories and their contents",
-                        "default": False
-                    }
+                    "path": {"type": "string"},
+                    "recursive": {"type": "boolean", "default": False}
                 },
                 "required": ["path"]
             }
-        },
-        {
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "find",
             "description": "Search for files matching specified criteria.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "directory": {
-                        "type": "string",
-                        "description": "The directory to search within"
-                    },
-                    "pattern": {
-                        "type": "string",
-                        "description": "Search pattern (supports wildcards like *.txt)",
-                        "default": "*"
-                    },
-                    "recursive": {
-                        "type": "boolean",
-                        "description": "If true, search recursively through subdirectories",
-                        "default": True
-                    },
-                    "max_results": {
-                        "type": "integer",
-                        "description": "Maximum number of results to return",
-                        "minimum": 1,
-                        "default": 100
-                    }
+                    "directory": {"type": "string"},
+                    "pattern": {"type": "string", "default": "*"},
+                    "recursive": {"type": "boolean", "default": True},
+                    "max_results": {"type": "integer", "default": 100}
                 },
                 "required": ["directory"]
             }
         }
-    ]
-}
+    }
+]

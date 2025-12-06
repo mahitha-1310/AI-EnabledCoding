@@ -26,7 +26,7 @@ if __name__ == '__main__':
 
     uploaded_files = st.file_uploader(
         "Upload Code Files", 
-        type=os.getenv("DEFAULT_EXTS"),
+        # type=os.getenv("DEFAULT_EXTS"),
         accept_multiple_files=True
     )
 
@@ -48,7 +48,7 @@ if __name__ == '__main__':
         st.session_state.messages.append({'role': 'user', 'content': prompt})
 
         # Bring any inputted code to editor
-        transfer(input_path, editor_path)
+        # transfer(input_path, editor_path)
 
         response = pipeline.run(
             user_input=prompt,

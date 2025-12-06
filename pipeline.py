@@ -21,7 +21,7 @@ class CodebasePipeline:
             base_url=base_url or os.getenv("OPENAI_API_BASE")
         )
         self.model = model or os.getenv("OPENAI_API_MODEL")
-        self.system_prompt = os.getenv("SYSTEM_PROMPT")
+        self.system_prompt = read_system_prompt("prompt/system_prompt.md")
 
         self.temperature = float(os.getenv("TEMPERATURE"))
         self.loop_count = int(os.getenv("LOOP_COUNT"))
@@ -37,29 +37,33 @@ class CodebasePipeline:
     
     def use_tools(self, context: list[dict[str, str]], message):
         for tool_call in message.tool_calls:
-            # Get tool name
             tool_name = tool_call.function.name
-            # Unknown? Move on...
-            if tool_name not in TOOLS:
-                print(f"Unknown tool: {tool_name}")
-                continue
             
-            try:
-                # Load arguments
-                arguments = json.loads(tool_call.function.arguments)
-                # Call TOOL_DEFINITIONS[tool_name] as function 
-                with TOOLS[tool_name] as f:
-                    result = f(**arguments)
-            except Exception as e:
-                print(e)
-                result = e
-            finally:
-                # Add tool result to context
+            if tool_name not in TOOLS:
+                error_msg = f"Unknown tool: {tool_name}"
+                logging.error(error_msg)
                 context.append({
                     "role": "tool",
                     "tool_call_id": tool_call.id,
-                    "content": result
+                    "content": error_msg
                 })
+                continue
+            
+            try:
+                arguments = json.loads(tool_call.function.arguments)
+                logging.info(f"Executing tool: {tool_name} with args: {arguments}")
+                result = TOOLS[tool_name](**arguments)
+                logging.info(f"Tool {tool_name} result: {result}")
+            except Exception as e:
+                result = f"{type(e).__name__}: {str(e)}"
+                logging.error(f"Tool {tool_name} failed: {result}")
+            
+            # Add tool result to context
+            context.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": str(result)
+            })
 
     def tool_json(self, message):
         return {
@@ -79,26 +83,76 @@ class CodebasePipeline:
         }
 
     def react_loop(self, context, max_loops):
-        # Send user input to LLM
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=context,
-            tools=SCHEMAS,
-            temperature=self.temperature
-        )
+        # Sanitizes objects before sending to OpenAI
+        def sanitize(obj):
+            if isinstance(obj, Exception):
+                return str(obj)
+            elif isinstance(obj, dict):
+                return {k: sanitize(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [sanitize(i) for i in obj]
+            return obj
+
+        # Sanitize context before sending to API
+        clean_context = sanitize(context)
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=clean_context,
+                tools=SCHEMAS,
+                temperature=self.temperature
+            )
+        except Exception as e:
+            # If the API call itself fails, log and create a mock response
+            error_msg = f"Error during LLM call: {e}"
+            logging.error(error_msg)
+            context.append({"role": "assistant", "content": error_msg})
+            
+            # Create a mock response object to maintain consistency
+            from types import SimpleNamespace
+            mock_message = SimpleNamespace(content=error_msg, tool_calls=None)
+            mock_choice = SimpleNamespace(message=mock_message)
+            mock_response = SimpleNamespace(choices=[mock_choice])
+            return mock_response
 
         message = response.choices[0].message
 
-        # Does LLM want to call more tools?
-        if message.tool_calls and max_loops > 0:
-            # Send the response back to the context!
-            context.append(self.tool_json(message))
-            # Execute each tool call
-            self.use_tools(context, message)
+        # Handle tool-calling loop
+        if getattr(message, "tool_calls", None) and max_loops > 0:
+            # Ensure no exceptions or non-serializable objects
+            safe_tool_call = sanitize(self.tool_json(message))
+            context.append(safe_tool_call)
 
-            message = self.react_loop(response, context, max_loops-1)
+            # Execute tools safely
+            try:
+                self.use_tools(context, message)
+            except Exception as e:
+                error_msg = f"Tool error: {e}"
+                logging.error(error_msg)
+                context.append({"role": "assistant", "content": error_msg})
+
+            # Continue loop
+            return self.react_loop(context, max_loops - 1)
         
+        # # If we have tool calls but max_loops is 0, make one final call without tools
+        # # to force a text response
+        # if getattr(message, "tool_calls", None) and max_loops == 0:
+        #     logging.warning("Max loops reached with pending tool calls. Requesting final response.")
+        #     try:
+        #         final_response = self.client.chat.completions.create(
+        #             model=self.model,
+        #             messages=clean_context,
+        #             temperature=self.temperature
+        #             # No tools parameter - force text response
+        #         )
+        #         return final_response
+        #     except Exception as e:
+        #         logging.error(f"Error getting final response: {e}")
+        #         # Fall through to return current response
+
         return response
+
             
 
     def run(self, user_input: str, user_id: str) -> str:
@@ -122,11 +176,27 @@ class CodebasePipeline:
         context.append({"role": "user", "content": user_input})
 
         # Go through loop of response and tool calling
-        response = self.react_loop(context, self.loop_count)
-
-        message = response.choices[0].message
-        
-        if message.content:
-            context.append({"role": "assistant", "content": message.content})
-        
-        return message.content
+        try:
+            response = self.react_loop(context, self.loop_count)
+            message = response.choices[0].message
+            
+            if message.content:
+                context.append({"role": "assistant", "content": message.content})
+                return message.content
+            else:
+                # If no content, try one more time without tools to get a summary
+                logging.warning("No content in final message. Requesting summary.")
+                summary_response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=context + [{"role": "user", "content": "Please provide a summary of what you did."}],
+                    temperature=self.temperature
+                )
+                summary = summary_response.choices[0].message.content
+                if summary:
+                    return summary
+                else:
+                    return "Task completed. The requested operations have been performed on the files."
+        except Exception as e:
+            error_msg = f"Pipeline error: {e}"
+            logging.error(error_msg)
+            return error_msg

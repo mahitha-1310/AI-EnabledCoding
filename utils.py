@@ -3,14 +3,26 @@ from pathlib import Path
 import shutil
 import uuid
 import streamlit as st
+from pathlib import Path
+
+def read_system_prompt(file_path):
+    """Read system prompt using pathlib."""
+    path = Path(file_path)
+    
+    if not path.exists():
+        raise FileNotFoundError(f"System prompt file not found: {file_path}")
+    
+    return path.read_text(encoding='utf-8')
 
 def transfer(source:str, destination:str):
     src_path = Path(source)
     dst_path = Path(destination)
     
-    def should_exclude(file_path):
-        """Check if file matches any exclude pattern."""
-        return any(file_path.match(pattern) for pattern in os.getenv("IGNORE"))
+    def should_exclude(file_path: Path):
+        ignore_raw = os.getenv("IGNORE", "")
+        patterns = [p.strip() for p in ignore_raw.split(",") if p.strip()]
+        return any(file_path.match(pattern) for pattern in patterns)
+
     
     def copy_directory_recursive(src, dst):
         """Recursively copy directory using os.scandir()."""
@@ -53,10 +65,23 @@ def generate_user_id():
     
     return st.session_state.user_id
 
-def getpath(path:str): 
+def getpath(path: str): 
     tail = os.getenv("EDITOR_PATH")
-
+    
     if tail is None:
-        raise ValueError("input_path cannot be None. Please provide a valid directory path.")
-
-    return Path(tail, path)
+        raise ValueError("`tail` cannot be None. Please provide a valid directory path.")
+    
+    # Convert both to Path objects
+    base_path = Path(tail)
+    requested_path = Path(path)
+    
+    # If the requested path starts with the base path name, strip it
+    # E.g., if EDITOR_PATH is "sandbox" and path is "sandbox/test3.c"
+    # then we want just "test3.c"
+    if requested_path.parts and requested_path.parts[0] == base_path.name:
+        # Remove the first part of the path
+        relative_path = Path(*requested_path.parts[1:])
+        return base_path / relative_path
+    
+    # Otherwise, just combine normally
+    return base_path / requested_path
