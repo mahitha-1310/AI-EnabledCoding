@@ -21,7 +21,7 @@ class CodebasePipeline:
             base_url=base_url or os.getenv("OPENAI_API_BASE")
         )
         self.model = model or os.getenv("OPENAI_API_MODEL")
-        self.system_prompt = read_system_prompt("prompt/system_prompt.md")
+        self.system_prompt = read_path("prompt/system_prompt.md")
 
         self.temperature = float(os.getenv("TEMPERATURE"))
         self.loop_count = int(os.getenv("LOOP_COUNT"))
@@ -105,7 +105,7 @@ class CodebasePipeline:
             )
         except Exception as e:
             # If the API call itself fails, log and create a mock response
-            error_msg = f"Error during LLM call: {e}"
+            error_msg = f"{type(e)}: {e}"
             logging.error(error_msg)
             context.append({"role": "assistant", "content": error_msg})
             
@@ -128,28 +128,12 @@ class CodebasePipeline:
             try:
                 self.use_tools(context, message)
             except Exception as e:
-                error_msg = f"Tool error: {e}"
+                error_msg = f"{type(e)}: {e}"
                 logging.error(error_msg)
                 context.append({"role": "assistant", "content": error_msg})
 
             # Continue loop
             return self.react_loop(context, max_loops - 1)
-        
-        # # If we have tool calls but max_loops is 0, make one final call without tools
-        # # to force a text response
-        # if getattr(message, "tool_calls", None) and max_loops == 0:
-        #     logging.warning("Max loops reached with pending tool calls. Requesting final response.")
-        #     try:
-        #         final_response = self.client.chat.completions.create(
-        #             model=self.model,
-        #             messages=clean_context,
-        #             temperature=self.temperature
-        #             # No tools parameter - force text response
-        #         )
-        #         return final_response
-        #     except Exception as e:
-        #         logging.error(f"Error getting final response: {e}")
-        #         # Fall through to return current response
 
         return response
 
@@ -195,7 +179,7 @@ class CodebasePipeline:
                 if summary:
                     return summary
                 else:
-                    return "Task completed. The requested operations have been performed on the files."
+                    return "No summary could be generated."
         except Exception as e:
             error_msg = f"Pipeline error: {e}"
             logging.error(error_msg)

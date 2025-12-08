@@ -4,8 +4,36 @@ import shutil
 import uuid
 import streamlit as st
 from pathlib import Path
+import zipfile
+import io
 
-def read_system_prompt(file_path):
+def create_zip(directory):
+    """Create a zip file from directory contents"""
+    zip_buffer = io.BytesIO()
+    
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        for root, dirs, files in os.walk(directory):
+            for file in files:
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, directory)
+                zip_file.write(file_path, arcname)
+    
+    zip_buffer.seek(0)
+    return zip_buffer
+
+def clear_directory(directory):
+    """Remove all contents from directory"""
+    if os.path.exists(directory):
+        for item in os.listdir(directory):
+            item_path = os.path.join(directory, item)
+            if os.path.isfile(item_path) or os.path.islink(item_path):
+                os.unlink(item_path)
+            elif os.path.isdir(item_path):
+                shutil.rmtree(item_path)
+        return True
+    return False
+
+def read_path(file_path):
     """Read system prompt using pathlib."""
     path = Path(file_path)
     
@@ -13,6 +41,15 @@ def read_system_prompt(file_path):
         raise FileNotFoundError(f"System prompt file not found: {file_path}")
     
     return path.read_text(encoding='utf-8')
+
+def write_files(file_list, target_dir):
+    # Create target directory if it doesn't exist
+    os.makedirs(target_dir, exist_ok=True)
+    
+    # Copy each file to the target directory
+    for file_path in file_list:
+        if os.path.isfile(file_path):
+            shutil.copy2(file_path, target_dir)
 
 def transfer(source:str, destination:str):
     src_path = Path(source)
@@ -48,7 +85,6 @@ def transfer(source:str, destination:str):
                     shutil.copy2(src_item, dst_item)
     
     copy_directory_recursive(src_path, dst_path)
-
 
 def generate_user_id():
     # Try to get from session state first
