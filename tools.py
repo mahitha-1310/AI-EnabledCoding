@@ -107,18 +107,17 @@ def remove(path: str, recursive: bool = False) -> Dict[str, Any]:
         raise ValueError(f"Unknown path type: {path}")
 
 
-def find(directory: str, pattern: str = "*", recursive: bool = True, max_results: int = 100) -> Dict[str, Any]:
+def list(directory: str, recursive: bool = True, max_depth: int = None) -> Dict[str, Any]:
     """
-    Search for files matching specified criteria.
+    List all files and directories in a directory structure.
     
     Args:
-        directory: The directory to search within
-        pattern: Search pattern (supports wildcards)
-        recursive: Search recursively through subdirectories
-        max_results: Maximum number of results to return
+        directory: The directory to list
+        recursive: List recursively through subdirectories
+        max_depth: Maximum depth to traverse (None for unlimited)
         
     Returns:
-        Dictionary containing list of matching files
+        Dictionary containing the directory structure
     """
     dir_path = getpath(directory)
     
@@ -128,38 +127,50 @@ def find(directory: str, pattern: str = "*", recursive: bool = True, max_results
     if not dir_path.is_dir():
         raise ValueError(f"Path is not a directory: {directory}")
     
-    # Search for files
-    if recursive:
-        search_pattern = f"**/{pattern}"
-    else:
-        search_pattern = pattern
-    
-    matches = []
-    for file_path in dir_path.glob(search_pattern):
-        if len(matches) >= max_results:
-            break
+    def build_tree(path, current_depth=0):
+        """Recursively build directory tree structure"""
+        items = []
         
-        if file_path.is_file():
-            stat = file_path.stat()
-            matches.append({
-                "path": str(file_path),
-                "name": file_path.name,
-                "size": stat.st_size,
-                "modified": stat.st_mtime
-            })
+        # Check depth limit
+        if max_depth is not None and current_depth >= max_depth:
+            return items
+        
+        try:
+            for item in sorted(path.iterdir()):
+                stat = item.stat()
+                entry = {
+                    "name": item.name,
+                    "path": str(item),
+                    "type": "directory" if item.is_dir() else "file",
+                }
+                
+                if item.is_file():
+                    entry["size"] = stat.st_size
+                    entry["modified"] = stat.st_mtime
+                elif item.is_dir() and recursive:
+                    entry["children"] = build_tree(item, current_depth + 1)
+                
+                items.append(entry)
+        except PermissionError:
+            # Skip directories we don't have permission to read
+            pass
+        
+        return items
+    
+    structure = build_tree(dir_path)
     
     return {
         "directory": str(dir_path),
-        "pattern": pattern,
-        "matches": matches,
-        "count": len(matches)
+        "recursive": recursive,
+        "structure": structure
     }
+
 
 TOOLS = {
     "read": read,
     "write": write,
     "remove": remove,
-    "find": find
+    "list": list
 }
 
 SCHEMAS = [
@@ -232,15 +243,25 @@ SCHEMAS = [
     {
         "type": "function",
         "function": {
-            "name": "find",
-            "description": "Search for files matching specified criteria.",
+            "name": "list",
+            "description": "List all files and directories in a directory structure.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "directory": {"type": "string"},
-                    "pattern": {"type": "string", "default": "*"},
-                    "recursive": {"type": "boolean", "default": True},
-                    "max_results": {"type": "integer", "default": 100}
+                    "directory": {
+                        "type": "string",
+                        "description": "The directory to list."
+                    },
+                    "recursive": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "List recursively through subdirectories."
+                    },
+                    "max_depth": {
+                        "type": "integer",
+                        "default": None,
+                        "description": "Maximum depth to traverse (None for unlimited)."
+                    }
                 },
                 "required": ["directory"]
             }
