@@ -18,7 +18,10 @@ class ValidationPipeline:
         self.source_dir = source_dir
 
         # Pipeline stages
-        self.compilation = CompilationStage(os.path.join(output_dir, "compilation/"))
+        self.compilation = CompilationStage(
+            output_dir=os.path.join(self.output_dir, "compilation/"),
+            project_root=self.source_dir, 
+        )
         # self.static_analysis = StaticAnalysisStage(os.path.join(output_dir, "static_analysis/"))
 
         # To be implemented in future sprints
@@ -43,12 +46,13 @@ class ValidationPipeline:
 
         # Containers to collect source code and header
         # files from LLM/output directory
-        c_files, h_files, build_tool = self.collect_file_paths()
+        c_files, h_files, include_dirs, build_tool = self.collect_file_paths()
 
         # Stage 1: Compilation
         results["compilation"] = self.compilation.run(
             source_files=c_files,
             header_files=h_files,
+            include_dirs=include_dirs,
             build_tool=build_tool
         )
 
@@ -59,20 +63,23 @@ class ValidationPipeline:
 
         return results
 
-    def collect_file_paths(self) -> tuple[List[str], List[str], str]:
+    def collect_file_paths(self) -> tuple[List[str], List[str], List[str], str | None]:
         """
         Iterate thru LLM output directory and extract:
             - .c files
             - .h files
+            - all include directories
             - any build system (make, cmake) if one exists, else None
 
         Returns:
-            (c_files, h_files, build_tool)
+            (c_files, h_files, include_dirs, build_tool)
         """
         # Containers to store paths to files in source directory
         c_files = []
         h_files = []
         build_tool = None  # Will become "make" or "cmake" if build file encountered
+        # Set to track all include directories
+        include_dirs = set()
 
         # Traverse all file paths in source directory
         for root, dirs, files in os.walk(self.source_dir, topdown=True):
@@ -80,10 +87,11 @@ class ValidationPipeline:
                 if filename.endswith(".c"):
                     c_files.append(os.path.join(root, filename))
                 elif filename.endswith(".h"):
+                    include_dirs.add(os.path.abspath(root))
                     h_files.append(os.path.join(root, filename))
                 elif filename == "Makefile":
                     build_tool = "make"
                 elif filename == "CMakeLists.txt":
                     build_tool = "cmake"
 
-        return c_files, h_files, build_tool
+        return c_files, h_files, sorted(include_dirs), build_tool

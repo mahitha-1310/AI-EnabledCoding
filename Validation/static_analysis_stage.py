@@ -16,4 +16,7 @@ class StaticAnalysisStage:
         self.logs_dir = os.path.join(self.output_dir, "logs/")
         os.makedirs(self.logs_dir, exist_ok=True)
 
-    
+    def run(
+        
+    ):
+        pass
