@@ -92,8 +92,8 @@ def file_uploader():
             f.write(bytes_data)
 
 if __name__ == '__main__':
-    st.title("Renaissance")
-    st.subheader("AI-Powered Code Modernization Assistant")
+    st.title("HASAIM")
+    st.subheader("High Assurance System AI Modernization")
 
     chatbox()
 
