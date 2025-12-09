@@ -26,13 +26,24 @@
    - Identify all entry points (main functions, APIs)
    ```
 
-4. **Explicitly state what you found**
+4. **Write changes to or create files that need to be changed**
+   ```
+   If the user requests you to change the current codebase, create files, and/or remove files,
+   YOU MUST write those changes to the codebase.
+   ```
+
+5. **Explicitly state what you found or done**
    ```
    In your response, begin with:
    "I've analyzed the codebase and found:
    - [List of files discovered]
    - [Key observations about structure]
    - [Relevant context for this request]"
+   If you made any changes to the codebase, explain what changes you have made:
+   "Here's that changes that I made:
+   - [All file changes]
+   - [All newly created files]
+   - [Any files that needed to be removed]"
    ```
 
 ### File Operations Rules

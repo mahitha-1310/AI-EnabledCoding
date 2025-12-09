@@ -97,6 +97,7 @@ def write(path: str, content: str, encoding: str = "utf-8", mode: str = "overwri
     try:
         # Write the file
         logging.info(f"[WRITE] Opening file for writing...")
+        logging.info(f"[CONTENT]\n{content}")
         with open(file_path, write_mode, encoding=encoding) as f:
             f.write(content)
         logging.info(f"[WRITE] Content written successfully")
