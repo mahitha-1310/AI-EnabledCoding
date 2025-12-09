@@ -32,12 +32,17 @@ class CodebasePipeline:
         logging.basicConfig(
             filename='llm_queries.log',
             level=logging.INFO,
-            format='%(asctime)s - %(message)s'
+            format='%(asctime)s - %(levelname)s - %(message)s'
         )
     
     def use_tools(self, context: list[dict[str, str]], message):
         for tool_call in message.tool_calls:
             tool_name = tool_call.function.name
+            
+            logging.info(f"=== TOOL CALL START ===")
+            logging.info(f"Tool name: {tool_name}")
+            logging.info(f"Tool call ID: {tool_call.id}")
+            logging.info(f"Raw arguments: {tool_call.function.arguments}")
             
             if tool_name not in TOOLS:
                 error_msg = f"Unknown tool: {tool_name}"
@@ -51,12 +56,31 @@ class CodebasePipeline:
             
             try:
                 arguments = json.loads(tool_call.function.arguments)
-                logging.info(f"Executing tool: {tool_name} with args: {arguments}")
+                logging.info(f"Parsed arguments: {json.dumps(arguments, indent=2)}")
+                logging.info(f"Executing tool: {tool_name}")
+                
                 result = TOOLS[tool_name](**arguments)
-                logging.info(f"Tool {tool_name} result: {result}")
+                
+                logging.info(f"Tool {tool_name} SUCCESS")
+                logging.info(f"Result type: {type(result)}")
+                logging.info(f"Result: {json.dumps(result, indent=2)}")
+                
+            except json.JSONDecodeError as e:
+                result = f"JSONDecodeError: Failed to parse arguments - {str(e)}"
+                logging.error(f"Tool {tool_name} FAILED - JSON parsing error: {result}")
+            except TypeError as e:
+                result = f"TypeError: Invalid arguments - {str(e)}"
+                logging.error(f"Tool {tool_name} FAILED - Type error: {result}")
+            except FileNotFoundError as e:
+                result = f"FileNotFoundError: {str(e)}"
+                logging.error(f"Tool {tool_name} FAILED - File not found: {result}")
+            except PermissionError as e:
+                result = f"PermissionError: {str(e)}"
+                logging.error(f"Tool {tool_name} FAILED - Permission denied: {result}")
             except Exception as e:
                 result = f"{type(e).__name__}: {str(e)}"
-                logging.error(f"Tool {tool_name} failed: {result}")
+                logging.error(f"Tool {tool_name} FAILED - Unexpected error: {result}")
+                logging.exception("Full traceback:")
             
             # Add tool result to context
             context.append({
@@ -64,6 +88,7 @@ class CodebasePipeline:
                 "tool_call_id": tool_call.id,
                 "content": str(result)
             })
+            logging.info(f"=== TOOL CALL END ===\n")
 
     def tool_json(self, message):
         return {
@@ -96,6 +121,8 @@ class CodebasePipeline:
         # Sanitize context before sending to API
         clean_context = sanitize(context)
 
+        logging.info(f"--- REACT LOOP (remaining loops: {max_loops}) ---")
+
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -106,7 +133,7 @@ class CodebasePipeline:
         except Exception as e:
             # If the API call itself fails, log and create a mock response
             error_msg = f"{type(e)}: {e}"
-            logging.error(error_msg)
+            logging.error(f"API call failed: {error_msg}")
             context.append({"role": "assistant", "content": error_msg})
             
             # Create a mock response object to maintain consistency
@@ -120,6 +147,8 @@ class CodebasePipeline:
 
         # Handle tool-calling loop
         if getattr(message, "tool_calls", None) and max_loops > 0:
+            logging.info(f"Model requested {len(message.tool_calls)} tool call(s)")
+            
             # Ensure no exceptions or non-serializable objects
             safe_tool_call = sanitize(self.tool_json(message))
             context.append(safe_tool_call)
@@ -129,12 +158,14 @@ class CodebasePipeline:
                 self.use_tools(context, message)
             except Exception as e:
                 error_msg = f"{type(e)}: {e}"
-                logging.error(error_msg)
+                logging.error(f"Tool execution failed: {error_msg}")
+                logging.exception("Full traceback:")
                 context.append({"role": "assistant", "content": error_msg})
 
             # Continue loop
             return self.react_loop(context, max_loops - 1)
-
+        
+        logging.info("No more tool calls or max loops reached")
         return response
 
             
@@ -151,7 +182,11 @@ class CodebasePipeline:
             Text response from the LLM
         """
 
-        logging.info(f"User: {user_id} | Query: {user_input}")
+        logging.info(f"\n{'='*80}")
+        logging.info(f"NEW PIPELINE RUN")
+        logging.info(f"User: {user_id}")
+        logging.info(f"Query: {user_input}")
+        logging.info(f"{'='*80}\n")
 
         # Start with the system message
         context = [{"role": "system", "content": self.system_prompt}]
@@ -166,6 +201,7 @@ class CodebasePipeline:
             
             if message.content:
                 context.append({"role": "assistant", "content": message.content})
+                logging.info(f"Final response: {message.content}")
                 return message.content
             else:
                 # If no content, try one more time without tools to get a summary
@@ -177,10 +213,13 @@ class CodebasePipeline:
                 )
                 summary = summary_response.choices[0].message.content
                 if summary:
+                    logging.info(f"Summary: {summary}")
                     return summary
                 else:
+                    logging.warning("No summary could be generated.")
                     return "No summary could be generated."
         except Exception as e:
             error_msg = f"Pipeline error: {e}"
             logging.error(error_msg)
+            logging.exception("Full traceback:")
             return error_msg
