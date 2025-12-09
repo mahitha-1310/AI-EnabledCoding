@@ -1,22 +1,13 @@
 import os
-from pathlib import Path
-from typing import List, Dict, Tuple, Optional
 from openai import OpenAI
-from dotenv import load_dotenv
 import logging
-
-DEFAULT_EXTS = ['.py', '.js', '.java', '.cpp', '.c', '.ts', '.jsx', '.tsx']
-DEFAULT_DIRS = {'node_modules', '.git', '__pycache__', 'venv', '.venv', 'dist', 'build'}
-
-TEMPERATURE = 0.7
-SYSTEM_PROMPT = """
-You are a helpful coding assistant. Return code in the exact format requested.
-"""
+from tools import *
+import json
 
 class CodebasePipeline:
     """Pipeline for processing codebases through an LLM with conversation memory."""
     
-    def __init__(self, api_key: str = None, model: str = None):
+    def __init__(self, api_key: str = None, base_url: str = None, model: str = None):
         """
         Initialize the pipeline.
         
@@ -24,319 +15,211 @@ class CodebasePipeline:
             api_key: OpenAI API key (defaults to OPENAI_API_KEY env var)
             model: Model to use (defaults to OPENAI_API_MODEL env var)
         """
-        load_dotenv()
+
         self.client = OpenAI(
             api_key=api_key or os.getenv("OPENAI_API_KEY"),
-            base_url=os.getenv("OPENAI_API_BASE")
+            base_url=base_url or os.getenv("OPENAI_API_BASE")
         )
         self.model = model or os.getenv("OPENAI_API_MODEL")
-        self.conversation_history = []
-        self.current_codebase = {}
-        
-    def collect_codebase(self, root_path: str, extensions: List[str] = None) -> Dict[str, str]:
-        """
-        Collect all code files from a directory.
-        
-        Args:
-            root_path: Root directory to scan
-            extensions: List of file extensions to include (e.g., ['.py', '.js'])
-        
-        Returns:
-            Dictionary mapping file paths to their contents
-        """
-        # Use default extensions if none provided
-        if extensions is None:
-            extensions = DEFAULT_EXTS
-        
-        # Initialize empty dictionary to store file paths and contents
-        codebase = {}
-        root = Path(root_path)
-        
-        # Iterate through each file extension
-        for ext in extensions:
-            # Recursively find all files with this extension
-            for file_path in root.rglob(f"*{ext}"):
-                # Check if file should be included (not in excluded directories)
-                if self._should_include(file_path):
-                    try:
-                        # Get path relative to root for cleaner file names
-                        relative_path = file_path.relative_to(root)
-                        # Read file contents and store in dictionary
-                        with open(file_path, 'r', encoding='utf-8') as f:
-                            codebase[str(relative_path)] = f.read()
-                        
-                    except Exception as e:
-                        # Log errors but continue processing other files
-                        print(f"Error reading {file_path}: {e}")
-        
-        return codebase
-    
-    def _should_include(self, file_path: Path) -> bool:
-        """Check if a file should be included (exclude common directories)."""
-        # Define directories that should be excluded from processing
-        exclude_dirs = DEFAULT_DIRS
-        # Return False if any excluded directory appears in the file path
-        return not any(excluded in file_path.parts for excluded in exclude_dirs)
-    
-    def format_codebase(self, codebase: Dict[str, str]) -> str:
-        """
-        Format codebase dictionary into a string for the LLM.
-        
-        Args:
-            codebase: Dictionary of file paths to contents
-            
-        Returns:
-            Formatted string representation
-        """
-        # Initialize list to collect formatted file entries
-        formatted = []
+        self.system_prompt = read_path("prompt/system_prompt.md")
 
-        # Iterate through each file in the codebase
-        for file_path, content in codebase.items():
-            # Format each file with clear delimiters and its content
-            formatted.append(f"=== {file_path} ===\n{content}\n")
-        
-        # Join all files with newlines into a single string
-        return "\n".join(formatted)
+        self.temperature = float(os.getenv("TEMPERATURE"))
+        self.loop_count = int(os.getenv("LOOP_COUNT"))
+
+        # self.conversation_history = []
+        # self.current_codebase = {}
+
+        logging.basicConfig(
+            filename='llm_queries.log',
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s'
+        )
     
-    def parse_codebase_response(self, response: str) -> Tuple[str, Dict[str, str]]:
-        """
-        Parse LLM response to extract both text response and codebase.
-        
-        Args:
-            response: LLM response containing optional text and formatted codebase
+    def use_tools(self, context: list[dict[str, str]], message):
+        for tool_call in message.tool_calls:
+            tool_name = tool_call.function.name
             
-        Returns:
-            Tuple of (text_response, codebase_dict)
-        """
-        lines = response.split('\n')
-        codebase = {}
-        current_file = None
-        current_content = []
-        text_response_lines = []
-        in_codebase = False
-        
-        for line in lines:
-            if line.startswith('=== ') and line.endswith(' ==='):
-                in_codebase = True
-                # Save previous file if exists
-                if current_file:
-                    codebase[current_file] = '\n'.join(current_content).strip()
+            logging.info(f"=== TOOL CALL START ===")
+            logging.info(f"Tool name: {tool_name}")
+            logging.info(f"Tool call ID: {tool_call.id}")
+            logging.info(f"Raw arguments: {tool_call.function.arguments}")
+            
+            if tool_name not in TOOLS:
+                error_msg = f"Unknown tool: {tool_name}"
+                logging.error(error_msg)
+                context.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": error_msg
+                })
+                continue
+            
+            try:
+                arguments = json.loads(tool_call.function.arguments)
+                logging.info(f"Parsed arguments: {json.dumps(arguments, indent=2)}")
+                logging.info(f"Executing tool: {tool_name}")
                 
-                # Start new file
-                current_file = line[4:-4].strip()
-                current_content = []
+                result = TOOLS[tool_name](**arguments)
+                
+                logging.info(f"Tool {tool_name} SUCCESS")
+                logging.info(f"Result type: {type(result)}")
+                logging.info(f"Result: {json.dumps(result, indent=2)}")
+                
+            except json.JSONDecodeError as e:
+                result = f"JSONDecodeError: Failed to parse arguments - {str(e)}"
+                logging.error(f"Tool {tool_name} FAILED - JSON parsing error: {result}")
+            except TypeError as e:
+                result = f"TypeError: Invalid arguments - {str(e)}"
+                logging.error(f"Tool {tool_name} FAILED - Type error: {result}")
+            except FileNotFoundError as e:
+                result = f"FileNotFoundError: {str(e)}"
+                logging.error(f"Tool {tool_name} FAILED - File not found: {result}")
+            except PermissionError as e:
+                result = f"PermissionError: {str(e)}"
+                logging.error(f"Tool {tool_name} FAILED - Permission denied: {result}")
+            except Exception as e:
+                result = f"{type(e).__name__}: {str(e)}"
+                logging.error(f"Tool {tool_name} FAILED - Unexpected error: {result}")
+                logging.exception("Full traceback:")
             
-            elif current_file:
-                current_content.append(line)
-            
-            elif not in_codebase:
-                # Collect lines before codebase starts
-                text_response_lines.append(line)
-        
-        # Save last file
-        if current_file:
-            codebase[current_file] = '\n'.join(current_content).strip()
-        
-        text_response = '\n'.join(text_response_lines).strip()
-        return text_response, codebase
-    
-    def load_codebase(self, root_path: str, extensions: List[str] = None):
-        """
-        Load a codebase into the conversation context.
-        
-        Args:
-            root_path: Root directory to scan
-            extensions: File extensions to include
-        """
-        print("Loading codebase into context...")
-        self.current_codebase = self.collect_codebase(root_path, extensions)
-        print(f"Loaded {len(self.current_codebase)} files.")
-        
-        # Add codebase to conversation history
-        formatted_codebase = self.format_codebase(self.current_codebase)
-        self.conversation_history.append({
-            "role": "user",
-            "content": f"Here is the codebase I'm working with:\n\n{formatted_codebase}"
-        })
-        self.conversation_history.append({
+            # Add tool result to context
+            context.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": str(result)
+            })
+            logging.info(f"=== TOOL CALL END ===\n")
+
+    def tool_json(self, message):
+        return {
             "role": "assistant",
-            "content": "I've reviewed the codebase. How can I help you with it?"
-        })
-    
-    def chat(self, message: str) -> Tuple[str, Optional[Dict[str, str]]]:
-        """
-        Send a message in the ongoing conversation.
-        
-        Args:
-            message: Your message/instruction
-            return_code: Whether to expect and parse code in the response
+            "content": message.content,
+            "tool_calls": [
+                {
+                    "id": tool_call.id,
+                    "type": tool_call.type,
+                    "function": {
+                        "name": tool_call.function.name,
+                        "arguments": tool_call.function.arguments
+                    }
+                }
+                for tool_call in message.tool_calls
+            ]
+        }
+
+    def react_loop(self, context, max_loops):
+        # Sanitizes objects before sending to OpenAI
+        def sanitize(obj):
+            if isinstance(obj, Exception):
+                return str(obj)
+            elif isinstance(obj, dict):
+                return {k: sanitize(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [sanitize(i) for i in obj]
+            return obj
+
+        # Sanitize context before sending to API
+        clean_context = sanitize(context)
+
+        logging.info(f"--- REACT LOOP (remaining loops: {max_loops}) ---")
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=clean_context,
+                tools=SCHEMAS,
+                temperature=self.temperature
+            )
+        except Exception as e:
+            # If the API call itself fails, log and create a mock response
+            error_msg = f"{type(e)}: {e}"
+            logging.error(f"API call failed: {error_msg}")
+            context.append({"role": "assistant", "content": error_msg})
             
-        Returns:
-            Tuple of (text_response, optional_codebase_dict)
-        """
-        
-        # Add user message to history
-        self.conversation_history.append({
-            "role": "user",
-            "content": message
-        })
-        
-        # Make API call with full conversation history
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                *self.conversation_history
-            ],
-            temperature=TEMPERATURE
-        )
-        
-        llm_response = response.choices[0].message.content
-        
-        # Add assistant response to history
-        self.conversation_history.append({
-            "role": "assistant",
-            "content": llm_response
-        })
-        
-        # Parse response
-        text_response, modified_codebase = self.parse_codebase_response(llm_response)
-        if modified_codebase:
-            self.current_codebase = modified_codebase
-        return text_response, modified_codebase
-    
-    def reset_conversation(self):
-        """Clear conversation history and current codebase."""
-        self.conversation_history = []
-        self.current_codebase = {}
-        print("Conversation history cleared.")
-    
-    def process_with_llm(self, codebase: Dict[str, str], instruction: str, 
-                        return_code: bool = True) -> Tuple[str, Dict[str, str]]:
-        """
-        Send codebase to LLM with instructions (single-shot, no conversation).
-        
-        Args:
-            codebase: Dictionary of file paths to contents
-            instruction: What to ask the LLM to do with the codebase
-            return_code: Whether to request modified code back (default: True)
+            # Create a mock response object to maintain consistency
+            from types import SimpleNamespace
+            mock_message = SimpleNamespace(content=error_msg, tool_calls=None)
+            mock_choice = SimpleNamespace(message=mock_message)
+            mock_response = SimpleNamespace(choices=[mock_choice])
+            return mock_response
+
+        message = response.choices[0].message
+
+        # Handle tool-calling loop
+        if getattr(message, "tool_calls", None) and max_loops > 0:
+            logging.info(f"Model requested {len(message.tool_calls)} tool call(s)")
             
-        Returns:
-            Tuple of (text_response, modified_codebase_dict)
-        """
-        formatted_codebase = self.format_codebase(codebase)
-        
-######## SYSTEM PROMPT ########
+            # Ensure no exceptions or non-serializable objects
+            safe_tool_call = sanitize(self.tool_json(message))
+            context.append(safe_tool_call)
 
-        prompt = f"""{instruction}
+            # Execute tools safely
+            try:
+                self.use_tools(context, message)
+            except Exception as e:
+                error_msg = f"{type(e)}: {e}"
+                logging.error(f"Tool execution failed: {error_msg}")
+                logging.exception("Full traceback:")
+                context.append({"role": "assistant", "content": error_msg})
 
-Please provide:
-1. A summary or explanation of the changes you have made
-2. The entire modified codebase with each file clearly marked if any changes are made to the code. 
-3. If code is provided in your response, format it like this:
+            # Continue loop
+            return self.react_loop(context, max_loops - 1)
+        
+        logging.info("No more tool calls or max loops reached")
+        return response
 
-```<language>
-<file contents>
-```
-
-Here is the codebase:
-
-{formatted_codebase}"""
-        
-###############################
-
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=TEMPERATURE
-        )
-        
-        llm_response = response.choices[0].message.content
-        
-        if return_code:
-            text_response, modified_codebase = self.parse_codebase_response(llm_response)
-            return text_response, modified_codebase
-        else:
-            return llm_response, {}
-    
-    def write_codebase(self, codebase: Dict[str, str], output_path: str):
-        """
-        Write codebase dictionary to disk.
-        
-        Args:
-            codebase: Dictionary of file paths to contents
-            output_path: Root directory to write files to
-        """
-        output_root = Path(output_path)
-        output_root.mkdir(parents=True, exist_ok=True)
-        
-        for file_path, content in codebase.items():
-            full_path = output_root / file_path
-            full_path.parent.mkdir(parents=True, exist_ok=True)
             
-            with open(full_path, 'w', encoding='utf-8') as f:
-                f.write(content)
-            print(f"Written: {full_path}")
-    
-    def save_current_codebase(self, output_path: str):
-        """Save the current codebase in context to disk."""
-        if not self.current_codebase:
-            print("No codebase loaded in context.")
-            return
-        self.write_codebase(self.current_codebase, output_path)
-    
-    def run(self, instruction: str, user_id: str, input_path: str, output_path: str, extensions: List[str] = None) -> str:
+
+    def run(self, user_input: str, user_id: str) -> str:
         """
         Run the complete pipeline (single-shot, no conversation).
         
         Args:
-            input_path: Path to input codebase
-            output_path: Path to write output codebase
-            instruction: Instructions for the LLM
-            extensions: File extensions to include
-            return_code: Whether to request and write modified code
+            user_input: Instructions for the LLM
+            user_id: Indicates a distinct user of the LLM service
             
         Returns:
             Text response from the LLM
         """
 
-        logging.basicConfig(
-            filename='llm_queries.log',
-            level=logging.INFO,
-            format='%(asctime)s - %(message)s'
-        )
+        logging.info(f"\n{'='*80}")
+        logging.info(f"NEW PIPELINE RUN")
+        logging.info(f"User: {user_id}")
+        logging.info(f"Query: {user_input}")
+        logging.info(f"{'='*80}\n")
 
-        logging.info(f"User: {user_id} | Query: {instruction}")
+        # Start with the system message
+        context = [{"role": "system", "content": self.system_prompt}]
 
-        if input_path is None:
-            raise ValueError("input_path cannot be None. Please provide a valid directory path.")
-        if output_path is None:
-            raise ValueError("output_path cannot be None. Please provide a valid directory path.")
+        # Next with the user input
+        context.append({"role": "user", "content": user_input})
 
-        print("Collecting codebase...")
-        codebase = self.collect_codebase(input_path, extensions)
-        print(f"Found {len(codebase)} files.")
-        
-        print("\nProcessing with LLM...")
-        text_response, modified_codebase = self.process_with_llm(
-            codebase, instruction
-        )
-        
-        print("\n" + "="*50)
-        print("LLM Response:")
-        print("-"*50)
-        print(text_response)
-        print("="*50 + "\n")
-        
-        if modified_codebase:
-            # If code output is requested:
-            print(f"Received {len(modified_codebase)} files from LLM.")
-            print("\nWriting output...")
-            self.write_codebase(modified_codebase, output_path)
-            print("\nPipeline complete!")
-        
-        return text_response
+        # Go through loop of response and tool calling
+        try:
+            response = self.react_loop(context, self.loop_count)
+            message = response.choices[0].message
+            
+            if message.content:
+                context.append({"role": "assistant", "content": message.content})
+                logging.info(f"Final response: {message.content}")
+                return message.content
+            else:
+                # If no content, try one more time without tools to get a summary
+                logging.warning("No content in final message. Requesting summary.")
+                summary_response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=context + [{"role": "user", "content": "Please provide a summary of what you did."}],
+                    temperature=self.temperature
+                )
+                summary = summary_response.choices[0].message.content
+                if summary:
+                    logging.info(f"Summary: {summary}")
+                    return summary
+                else:
+                    logging.warning("No summary could be generated.")
+                    return "No summary could be generated."
+        except Exception as e:
+            error_msg = f"Pipeline error: {e}"
+            logging.error(error_msg)
+            logging.exception("Full traceback:")
+            return error_msg
