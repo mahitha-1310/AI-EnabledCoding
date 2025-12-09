@@ -2,6 +2,7 @@ import os
 from openai import OpenAI
 import logging
 from tools import *
+from Validation.validation_pipeline import ValidationPipeline
 import json
 
 class CodebasePipeline:
@@ -22,6 +23,11 @@ class CodebasePipeline:
         )
         self.model = model or os.getenv("OPENAI_API_MODEL")
         self.system_prompt = read_path("prompt/system_prompt.md")
+
+        editor_path = os.getenv("EDITOR_PATH")
+        output_path = os.getenv("OUTPUT_PATH")
+
+        self.validator = ValidationPipeline(output_dir=output_path, source_dir=editor_path)
 
         self.temperature = float(os.getenv("TEMPERATURE"))
         self.loop_count = int(os.getenv("LOOP_COUNT"))
@@ -182,11 +188,9 @@ class CodebasePipeline:
             Text response from the LLM
         """
 
-        logging.info(f"\n{'='*80}")
         logging.info(f"NEW PIPELINE RUN")
-        logging.info(f"User: {user_id}")
-        logging.info(f"Query: {user_input}")
-        logging.info(f"{'='*80}\n")
+        logging.info(f"[USER] {user_id}")
+        logging.info(f"[QUERY] {user_input}")
 
         # Start with the system message
         context = [{"role": "system", "content": self.system_prompt}]
@@ -196,28 +200,18 @@ class CodebasePipeline:
 
         # Go through loop of response and tool calling
         try:
-            response = self.react_loop(context, self.loop_count)
-            message = response.choices[0].message
+            while True:
+                response = self.react_loop(context, self.loop_count)
+                message = response.choices[0].message
+                if message.content != None:
+                    break
             
-            if message.content:
-                context.append({"role": "assistant", "content": message.content})
-                logging.info(f"Final response: {message.content}")
-                return message.content
-            else:
-                # If no content, try one more time without tools to get a summary
-                logging.warning("No content in final message. Requesting summary.")
-                summary_response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=context + [{"role": "user", "content": "Please provide a summary of what you did."}],
-                    temperature=self.temperature
-                )
-                summary = summary_response.choices[0].message.content
-                if summary:
-                    logging.info(f"Summary: {summary}")
-                    return summary
-                else:
-                    logging.warning("No summary could be generated.")
-                    return "No summary could be generated."
+            # if message.content:
+            context.append({"role": "assistant", "content": message.content})
+            logging.info(f"Final response: {message.content}")
+            logging.info(f"Validation results:\n{self.validator.run()}")
+
+            return message.content
         except Exception as e:
             error_msg = f"Pipeline error: {e}"
             logging.error(error_msg)
