@@ -1,50 +1,88 @@
 import streamlit as st
 from pipeline import *
+from utils import *
 from dotenv import load_dotenv
-import streamlit as st
-import uuid
-
-def get_or_create_user_id():
-    # Try to get from session state first
-    if 'user_id' not in st.session_state:
-        # Check if returning user (via query params)
-        if 'uid' in st.query_params:
-            st.session_state.user_id = st.query_params['uid']
-        else:
-            # New user - generate ID
-            new_id = str(uuid.uuid4())
-            st.session_state.user_id = new_id
-            # Optionally set in URL (persists across page refreshes)
-            st.query_params['uid'] = new_id
-    
-    return st.session_state.user_id
+import os
 
 load_dotenv()
+
 pipeline = CodebasePipeline()
+user_id = generate_user_id()
 
 input_path = os.getenv("INPUT_PATH")
+editor_path = os.getenv("EDITOR_PATH")
 output_path = os.getenv("OUTPUT_PATH")
-os.makedirs(input_path, exist_ok=True)
-os.makedirs(output_path, exist_ok=True)
 
-user_id = get_or_create_user_id()
+for path in [input_path, editor_path, output_path]:
+    os.makedirs(path, exist_ok=True)
 
-if __name__ == '__main__':
-    st.title("Code Modernizer")
-    st.subheader("Boeing Group #2")
+def chatbot():
+    prompt = st.chat_input("Please explain what you would like me to do!")
+    if prompt and (not prompt.strip() == ""):
+        # Add prompt to chat
+        st.chat_message('user').markdown(prompt)
+        st.session_state.messages.append({'role': 'user', 'content': prompt})
 
+        # Bring any inputted code to editor
+        transfer(input_path, editor_path)
+
+        response = pipeline.run(
+            user_input=prompt,
+            user_id=user_id
+        )
+
+        # Bring edited code to output
+        transfer(editor_path, output_path)
+        
+        # Produce response
+        st.chat_message('assistant').markdown(response)
+        st.session_state.messages.append({'role': 'assistant', 'content': response})
+        st.rerun()
+
+def chatbox():
     if 'messages' not in st.session_state:
         st.session_state.messages = []
+    with st.container(height=450):
+        for message in st.session_state.messages:
+            st.chat_message(message['role']).markdown(message['content'])
+        chatbot()
 
-    for message in st.session_state.messages:
-        st.chat_message(message['role']).markdown(message['content'])
+def codebase_download():
+    if st.button("Download Codebase", use_container_width=True):
+        if os.path.exists(output_path) and os.listdir(output_path):
+            try:
+                zip_data = create_zip(output_path)
+                st.download_button(
+                    label="💾 Click to Download ZIP",
+                    data=zip_data,
+                    file_name=f"{os.path.basename(output_path)}.zip",
+                    mime="application/zip",
+                    use_container_width=True
+                )
+                st.success("✅ ZIP file ready for download!")
+            except Exception as e:
+                st.error(f"❌ Error creating zip: {str(e)}")
+        else:
+            st.warning("No output to download.")
 
+def codebase_clear():
+    if st.button("Clear Codebase", use_container_width=True):
+        if os.path.exists(editor_path) and os.path.exists(input_path):
+            try:
+                clear_directory(editor_path)
+                clear_directory(input_path)
+                st.success("✅ Directory cleared successfully!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"❌ Error clearing directory: {str(e)}")
+        else:
+            st.warning("⚠️ Directory doesn't exist")
+
+def file_uploader():
     uploaded_files = st.file_uploader(
-        "Upload Code Files", 
-        type=DEFAULT_EXTS,
+        label="Upload Files",
         accept_multiple_files=True
     )
-
     for uploaded_file in uploaded_files:
         # Read the file data
         bytes_data = uploaded_file.read()
@@ -54,16 +92,16 @@ if __name__ == '__main__':
         with open(file_path, "wb") as f:
             f.write(bytes_data)
 
-    prompt = st.chat_input("Please explain what you would like me to do!")
+if __name__ == '__main__':
+    st.title("HASAIM")
+    st.subheader("High Assurance System AI Modernization")
 
-    if prompt and (not prompt.strip() == ""):
-        st.chat_message('user').markdown(prompt)
-        st.session_state.messages.append({'role':'user', 'content':prompt})
-        response = pipeline.run(
-            instruction=prompt,
-            user_id=user_id,
-            input_path=os.getenv("INPUT_PATH"),
-            output_path=os.getenv("OUTPUT_PATH")
-        )
-        st.chat_message('assistant').markdown(response)
-        st.session_state.messages.append({'role':'assistant', 'content':response})
+    chatbox()
+
+    cl, cr = st.columns([3, 1])
+
+    with cl:
+        file_uploader()
+    with cr:
+        codebase_download()
+        codebase_clear()
