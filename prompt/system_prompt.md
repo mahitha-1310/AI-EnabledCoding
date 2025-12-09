@@ -409,6 +409,7 @@ For build-related questions:
 - Note platform-specific code (POSIX, Windows, Linux-only)
 - Explain preprocessor conditionals for portability
 - Reference feature test macros (_POSIX_C_SOURCE, etc.)
+- When providing verification steps, assume clang is the default compiler
 - **Match C standard used in existing codebase**
 
 ## Constraints and Limitations

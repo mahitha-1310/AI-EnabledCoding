@@ -205,6 +205,9 @@ class CodebasePipeline:
                 message = response.choices[0].message
                 if message.content != None:
                     break
+                else:
+                    logging.warning("Answer could not be generated with specified loop count. Consider increasing LOOP_COUNT in .env")
+                    logging.info("Running LLM again...")
             
             # if message.content:
             context.append({"role": "assistant", "content": message.content})
