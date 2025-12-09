@@ -17,12 +17,26 @@ class CompilationStage:
         Initialize the compilation stage with where to write stage's output (this refers 
         to root from which to write `.o` files and executables), as well as the project root
         (where source code would be found)
-        """
-        self.project_root = project_root
 
-        self.output_dir = output_dir
+        Args:
+            output_dir: Path to directory to which this stage will write all generated artifacts
+                        and/or log files (may be existing directory or nonexisting, in which case
+                        a new directory will be created at the specified path)
+            project_root: Path to project directory (where all source code/header files will be
+                          found)
+                
+            (NOTE: these may or may not be a relative path; if relative, this initializer normalizes
+            the relative path to be an absolute path)
+        """
+        self.project_root = os.path.abspath(project_root)
+
+        self.output_dir = os.path.abspath(output_dir)
         os.makedirs(self.output_dir, exist_ok=True)
 
+        # For now, log directory is always nested inside compilation directory
+        # ====================================================================
+        # In the future, I'd like to make this a third parameter such that the user can
+        #   specify where they would like logs to be written
         self.logs_dir = os.path.join(self.output_dir, "logs/")
         os.makedirs(self.logs_dir, exist_ok=True)
 
@@ -168,8 +182,12 @@ class CompilationStage:
 
         # Compile each source (`.c`) file into an object (`.o`) file
         for src in source_files:
+            # Ensure `src` is an absolute path
+            src = os.path.abspath(src)
+
             # Extract only the filename from `.c` file's full path
             obj_basename = os.path.splitext(os.path.basename(src))[0]
+
             # Add `.o` extension
             obj_name = obj_basename + ".o"
             obj = os.path.join(self.output_dir, obj_name)
