@@ -3,7 +3,14 @@ FROM python:3.11-slim
 
 # Install clang
 RUN apt-get update && \
-    apt-get install -y clang
+    apt-get install -y --no-install-recommends \
+        clang \
+        clang-tidy \
+        llvm \
+        llvm-dev \
+        libclang-dev \
+        ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv

@@ -35,11 +35,11 @@ class ValidationPipeline:
         # self.style_analysis = StyleAnalysisStage(output_dir)
         # self.unit_tester = UnitTestStage(output_dir)
         
-        self.llm = LLMMetricStage(
-            output_dir=os.path.join(self.output_dir, "LLMMetrics/"),
-            project_root=self.source_dir,
-            prompt_text=prompt
-        )
+        # self.llm = LLMMetricStage(
+        #     output_dir=os.path.join(self.output_dir, "LLMMetrics/"),
+        #     project_root=self.source_dir,
+        #     prompt_text=prompt
+        # )
 
     def run(self) -> Dict[str, Dict[str, Any]]:
         """
@@ -75,7 +75,7 @@ class ValidationPipeline:
 
         # Further steps to be implemented later...
         
-        results["LLMMetrics"] = self.llm.run()
+        # results["LLMMetrics"] = self.llm.run()
 
         return results
 
