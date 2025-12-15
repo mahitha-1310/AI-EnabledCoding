@@ -17,6 +17,9 @@ COPY pyproject.toml /home/
 # Install dependencies using uv
 RUN uv sync --no-dev
 
+# Added the environment path
+ENV PATH="/home/.venv/bin:$PATH"
+
 # Copy the rest of the application
 COPY . /home
 
