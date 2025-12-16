@@ -17,6 +17,10 @@ streamlit run home.py
 
 ## Test Validation Pipeline
 
+Navigate to the `feature/StaticAnalysis` branch for a more detailed README on how to test the **Compilation** and **Static Analysis** stages in isolation. The Static Analysis stage has not yet been integrated with this branch (`main`). 
+
+------
+
 Currently, to test the **Validation Pipeline**, build the container _(as above)_:
 
 ```bash
