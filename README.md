@@ -19,6 +19,8 @@ streamlit run home.py
 
 Navigate to the `feature/StaticAnalysis` branch for a more detailed README on how to test the **Compilation** and **Static Analysis** stages in isolation. The Static Analysis stage has not yet been integrated with this branch (`main`). 
 
+Navigate to the `feature/ValidationPipeline` branch for a more README on how to test **LLM Quality Metric** stages in isolation.  The LLM Quality Metric stage has not yet been integrated with this branch (`main`).
+
 ------
 
 Currently, to test the **Validation Pipeline**, build the container _(as above)_:
