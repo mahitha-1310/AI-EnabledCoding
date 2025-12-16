@@ -1,0 +1,44 @@
+{
+  "name": "ai-doc-agent",
+  "displayName": "AI Doc Agent",
+  "description": "Generate GitHub repository documentation using a Python backend and display results in VS Code.",
+  "version": "0.0.1",
+  "publisher": "your-name",
+  "engines": {
+    "vscode": "^1.83.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onCommand:aidocagent.openPanel",
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "aidocagent.openPanel",
+        "title": "Open AI Doc Agent",
+        "category": "AI Doc Agent"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "npm run compile && node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.0",
+    "@types/node": "^20.0.0",
+    "@types/node-fetch": "^2.6.13",
+    "@types/vscode": "^1.83.0",
+    "eslint": "^8.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "node-fetch": "^2.7.0"
+  }
+}
