@@ -70,7 +70,8 @@ class ValidationPipeline:
         # Stage 2: Static Analysis
         results["static_analysis"] = self.static_analysis.run(
             source_files=c_files,
-            compile_commands="ValidationTests/Test4/compilation/compile_commands.json"
+            compile_commands=f"{self.output_dir}/compilation/"
+            # ValidationTests/Test4/compilation/compile_commands.json
         )
 
         # Further steps to be implemented later...

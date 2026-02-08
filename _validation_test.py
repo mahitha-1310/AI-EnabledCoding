@@ -22,5 +22,3 @@ val_pipe = ValidationPipeline(
 )
 
 results = val_pipe.run()
-
-print(json.dumps(results, indent=2))

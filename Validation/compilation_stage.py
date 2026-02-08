@@ -152,8 +152,6 @@ class CompilationStage:
             "executable_path": None
         }
 
-        # Generate 
-
         # Attempt to generate a `compile_commands.json` file for all successfully
         # compiled source files
         self._generate_compile_commands(results)
@@ -228,7 +226,7 @@ class CompilationStage:
             success = proc.returncode == 0
 
             file_outputs[src] = {
-                "cmd": ' '.join(cmd),        # to store command ran
+                "cmd": ' '.join(cmd),     # to store command ran
                 "success": success,          # to store success/fail per file
                 "stdout": proc.stdout,       # to capture stdout per file
                 "stderr": proc.stderr,       # to capture stderr per file
@@ -295,6 +293,8 @@ class CompilationStage:
 
             with open(log_path, "w") as f:
                 for artifact, content in file_results.items():
+                    # Reformat command field for prettier log printing
+                    content = content.replace(" ", "\n\t") if artifact == "cmd" else content
                     f.write(f"{artifact}: " + f"{content}\n\n")
             
         # ====================== STEP 2 ======================
@@ -303,6 +303,10 @@ class CompilationStage:
         
         with open(link_log_path, "w") as f:
             for artifact, content in results["link_output"].items():
+                # Reformat command field for prettier log printing
+                
+                
+                content = content.replace(" ", "\n\t") if artifact == "cmd" else content
                 f.write(f"{artifact}: " + f"{content}\n\n")
         
         # ====================== STEP 3 ======================

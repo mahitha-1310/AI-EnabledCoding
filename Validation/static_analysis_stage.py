@@ -93,7 +93,7 @@ class StaticAnalysisStage:
         all_success = True
 
         # clang-tidy must be pointed to the build directory containing compile_commands.json
-        build_dir = os.path.dirname(os.path.abspath(compile_commands))
+        build_dir = os.path.abspath(compile_commands)
 
         for src in source_files:
             src_abs = os.path.abspath(src)
@@ -115,7 +115,7 @@ class StaticAnalysisStage:
                 all_success = False
 
             file_outputs[src_abs] = {
-                "cmd": " ".join(cmd),
+                "cmd": ' '.join(cmd),
                 "success": success,
                 "stdout": proc.stdout,
                 "stderr": proc.stderr
@@ -136,6 +136,8 @@ class StaticAnalysisStage:
 
             with open(log_path, "w") as f:
                 for key, value in file_result.items():
+                    # Reformat command field for prettier log printing
+                    value = value.replace(" ", "\n\t") if key == "cmd" else value
                     f.write(f"{key}: {value}\n\n")
 
         # Write summary JSON
