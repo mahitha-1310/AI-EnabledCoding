@@ -2,6 +2,7 @@ import streamlit as st
 from pipeline import *
 from utils import *
 from dotenv import load_dotenv
+import time
 import os
 
 load_dotenv()
@@ -23,19 +24,20 @@ def chatbot():
         st.chat_message('user').markdown(prompt)
         st.session_state.messages.append({'role': 'user', 'content': prompt})
 
-        # Bring any inputted code to editor
-        transfer(input_path, editor_path)
-
-        response = pipeline.run(
-            user_input=prompt,
-            user_id=user_id
-        )
-
         # Bring edited code to output
         transfer(editor_path, output_path)
         
         # Produce response
-        st.chat_message('assistant').markdown(response)
+        delay = 0.05
+        with st.chat_message('assistant'):
+            response = pipeline.run(
+                user_input=prompt,
+                user_id=user_id
+            )
+            for word in response.strip():
+                yield word + " "
+                time.sleep(delay)
+
         st.session_state.messages.append({'role': 'assistant', 'content': response})
         st.rerun()
 
@@ -53,15 +55,15 @@ def codebase_download():
             try:
                 zip_data = create_zip(output_path)
                 st.download_button(
-                    label="💾 Click to Download ZIP",
+                    label="Click to Download ZIP",
                     data=zip_data,
                     file_name=f"{os.path.basename(output_path)}.zip",
                     mime="application/zip",
                     use_container_width=True
                 )
-                st.success("✅ ZIP file ready for download!")
+                st.success("ZIP file ready for download!")
             except Exception as e:
-                st.error(f"❌ Error creating zip: {str(e)}")
+                st.error(f"Error creating zip: {str(e)}")
         else:
             st.warning("No output to download.")
 
@@ -71,12 +73,12 @@ def codebase_clear():
             try:
                 clear_directory(editor_path)
                 clear_directory(input_path)
-                st.success("✅ Directory cleared successfully!")
+                st.success("Directory cleared successfully!")
                 st.rerun()
             except Exception as e:
-                st.error(f"❌ Error clearing directory: {str(e)}")
+                st.error(f"Error clearing directory: {str(e)}")
         else:
-            st.warning("⚠️ Directory doesn't exist")
+            st.warning("Directory doesn't exist")
 
 def file_uploader():
     uploaded_files = st.file_uploader(

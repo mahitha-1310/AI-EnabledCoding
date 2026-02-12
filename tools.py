@@ -243,8 +243,8 @@ def list_dir(directory: str, recursive: bool = True, max_depth: int = None) -> D
 TOOLS = {
     "read": read,
     "write": write,
-    "remove": remove,
-    "list": list_dir
+    "remove": remove
+    # "list": list_dir
 }
 
 SCHEMAS = [
