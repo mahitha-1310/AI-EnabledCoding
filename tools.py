@@ -1,8 +1,10 @@
 import base64
+from langchain_core.tools import tool
 from typing import Dict, Any
 from utils import *
 import logging
 
+@tool
 def read(path: str, encoding: str = "utf-8") -> Dict[str, Any]:
     """
     Read content from a file.
@@ -49,7 +51,7 @@ def read(path: str, encoding: str = "utf-8") -> Dict[str, Any]:
     logging.info(f"[READ] Successfully read file, size: {stat.st_size} bytes")
     return result
 
-
+@tool
 def write(path: str, content: str, encoding: str = "utf-8", mode: str = "overwrite", create_directories: bool = False) -> Dict[str, Any]:
     """
     Write or update content to a file.
@@ -122,7 +124,7 @@ def write(path: str, content: str, encoding: str = "utf-8", mode: str = "overwri
     logging.info(f"[WRITE] Write operation completed successfully")
     return result
 
-
+@tool
 def remove(path: str, recursive: bool = False) -> Dict[str, Any]:
     """
     Remove or delete a file or directory.
@@ -168,83 +170,10 @@ def remove(path: str, recursive: bool = False) -> Dict[str, Any]:
         raise ValueError(f"Unknown path type: {path}")
 
 
-def list_dir(directory: str, recursive: bool = True, max_depth: int = None) -> Dict[str, Any]:
-    """
-    List all files and directories in a directory structure.
-    
-    Args:
-        directory: The directory to list
-        recursive: List recursively through subdirectories
-        max_depth: Maximum depth to traverse (None for unlimited)
-        
-    Returns:
-        Dictionary containing the directory structure
-    """
-    logging.info(f"[LIST] Starting list operation")
-    logging.info(f"[LIST] Directory: {directory}")
-    logging.info(f"[LIST] Recursive: {recursive}")
-    logging.info(f"[LIST] Max depth: {max_depth}")
-    
-    dir_path = getpath(directory)
-    logging.info(f"[LIST] Resolved path: {dir_path}")
-    
-    if not dir_path.exists():
-        logging.error(f"[LIST] Directory not found: {directory}")
-        raise FileNotFoundError(f"Directory not found: {directory}")
-    
-    if not dir_path.is_dir():
-        logging.error(f"[LIST] Path is not a directory: {directory}")
-        raise ValueError(f"Path is not a directory: {directory}")
-    
-    def build_tree(path, current_depth=0):
-        """Recursively build directory tree structure"""
-        items = []
-        
-        # Check depth limit
-        if max_depth is not None and current_depth >= max_depth:
-            return items
-        
-        try:
-            for item in sorted(path.iterdir()):
-                stat = item.stat()
-                entry = {
-                    "name": item.name,
-                    "path": str(item),
-                    "type": "directory" if item.is_dir() else "file",
-                }
-                
-                if item.is_file():
-                    entry["size"] = stat.st_size
-                    entry["modified"] = stat.st_mtime
-                elif item.is_dir() and recursive:
-                    entry["children"] = build_tree(item, current_depth + 1)
-                
-                items.append(entry)
-        except PermissionError:
-            # Skip directories we don't have permission to read
-            logging.warning(f"[LIST] Permission denied for: {path}")
-            pass
-        
-        return items
-    
-    structure = build_tree(dir_path)
-    logging.info(f"[LIST] Found {len(structure)} items in directory")
-    
-    result = {
-        "directory": str(dir_path),
-        "recursive": recursive,
-        "structure": structure
-    }
-    
-    logging.info(f"[LIST] List operation completed successfully")
-    return result
-
-
 TOOLS = {
     "read": read,
     "write": write,
     "remove": remove
-    # "list": list_dir
 }
 
 SCHEMAS = [
