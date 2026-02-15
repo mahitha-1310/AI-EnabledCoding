@@ -1,4 +1,5 @@
 import os, getpass, json
+from dotenv import load_dotenv
 from typing_extensions import TypedDict
 from typing import Literal
 # from IPython.display import Image, display
@@ -11,13 +12,15 @@ from langchain_openai import ChatOpenAI
 from tools import *
 from utils import *
 
-def _set_env(var: str):
-    if not os.environ.get(var):
-        os.environ[var] = getpass.getpass(f"{var}: ")
+# def _set_env(var: str):
+#     if not os.environ.get(var):
+#         os.environ[var] = getpass.getpass(f"{var}: ")
 
-_set_env("OPENAI_API_KEY")
-_set_env("OPENAI_API_BASE")
-_set_env("OPENAI_API_MODEL")
+# _set_env("OPENAI_API_KEY")
+# _set_env("OPENAI_API_BASE")
+# _set_env("OPENAI_API_MODEL")
+
+load_dotenv()
 
 input_path = os.getenv("INPUT_PATH")
 editor_path = os.getenv("EDITOR_PATH")
@@ -177,14 +180,23 @@ def run(user_input: str, user_id: str):
     logging.info(f"[USER] {user_id}")
     logging.info(f"[QUERY] {user_input}")
 
-    if not graph:
-        graph = build(MemorySaver())
+    try:
+        # Get the graph
+        global graph
+        if not graph:
+            graph = build(MemorySaver())
+            print(graph.get_graph().draw_ascii())
 
-    # Run the graph
-    response = graph.invoke({"messages": HumanMessage(content=user_input)})
+        # Run the graph
+        response = graph.invoke({"messages": HumanMessage(content=user_input)})
 
-    # Bring edited code to output
-    # TODO: remove when validation pipeline is ready!
-    transfer(editor_path, output_path)
+        # Bring edited code to output
+        # TODO: remove when validation pipeline is ready!
+        transfer(editor_path, output_path)
 
-    return response
+        return response
+    except Exception as e:
+            error_msg = f"{type(e)}: {e}"
+            logging.error(error_msg)
+            logging.exception("Full traceback:")
+            return error_msg

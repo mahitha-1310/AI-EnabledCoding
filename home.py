@@ -18,6 +18,11 @@ output_path = os.getenv("OUTPUT_PATH")
 for path in [input_path, editor_path, output_path]:
     os.makedirs(path, exist_ok=True)
 
+def stream(response, delay: float):
+    for word in response.strip():
+        yield word + " "
+        time.sleep(delay)
+
 def chatbot():
     prompt = st.chat_input("Please explain what you would like me to do!")
     if prompt and (not prompt.strip() == ""):
@@ -26,15 +31,12 @@ def chatbot():
         st.session_state.messages.append({'role': 'user', 'content': prompt})
         
         # Produce response
-        delay = 0.05
         with st.chat_message('assistant'):
             response = graph_pipeline.run(
                 user_input=prompt,
                 user_id=user_id
             )
-            for word in response.strip():
-                yield word + " "
-                time.sleep(delay)
+            st.write_stream(stream=stream(response=response, delay=0.05))
 
         st.session_state.messages.append({'role': 'assistant', 'content': response})
         st.rerun()
