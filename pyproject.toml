@@ -9,6 +9,7 @@ dependencies = [
     "python-dotenv",
     "ipython>=9.10.0",
     "langchain-openai>=1.1.8",
+    "grandalf>=0.8",
 ]
 
 [build-system]

@@ -11,6 +11,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langchain_openai import ChatOpenAI
 from tools import *
 from utils import *
+import grandalf
 
 # def _set_env(var: str):
 #     if not os.environ.get(var):
@@ -172,7 +173,7 @@ def build(chkptr):
     # Failure handling
     # graph_builder.add_edge("sendback", "converse")
     
-    return graph_builder.compile(interrupt_after="converse", checkpointer=chkptr)
+    return graph_builder.compile(interrupt_after=["converse"], checkpointer=chkptr)
 
 def run(user_input: str, user_id: str):
 
@@ -180,23 +181,21 @@ def run(user_input: str, user_id: str):
     logging.info(f"[USER] {user_id}")
     logging.info(f"[QUERY] {user_input}")
 
-    try:
-        # Get the graph
-        global graph
-        if not graph:
-            graph = build(MemorySaver())
-            print(graph.get_graph().draw_ascii())
+    global graph
 
-        # Run the graph
-        response = graph.invoke({"messages": HumanMessage(content=user_input)})
+    if not graph:
+        graph = build(MemorySaver())
+        print(graph.get_graph().draw_ascii())
 
-        # Bring edited code to output
-        # TODO: remove when validation pipeline is ready!
-        transfer(editor_path, output_path)
+    # Run the graph
+    response = graph.invoke(
+        {"messages": HumanMessage(content=user_input)},
+        {"configurable": {"thread_id": user_id}}
+    )
 
-        return response
-    except Exception as e:
-            error_msg = f"{type(e)}: {e}"
-            logging.error(error_msg)
-            logging.exception("Full traceback:")
-            return error_msg
+    # Bring edited code to output
+    # TODO: remove when validation pipeline is ready!
+    transfer(editor_path, output_path)
+
+    return response
+    

@@ -36,7 +36,7 @@ def chatbot():
                 user_input=prompt,
                 user_id=user_id
             )
-            st.write_stream(stream=stream(response=response, delay=0.05))
+            st.write_stream(stream=stream(response=response, delay=0.02))
 
         st.session_state.messages.append({'role': 'assistant', 'content': response})
         st.rerun()
