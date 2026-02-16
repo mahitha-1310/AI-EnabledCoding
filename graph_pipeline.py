@@ -1,17 +1,13 @@
-import os, getpass, json
+import os, json
 from dotenv import load_dotenv
 from typing_extensions import TypedDict
-from typing import Literal
-# from IPython.display import Image, display
-from Validation.validation_pipeline import ValidationPipeline
-from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langgraph.prebuilt import tools_condition, ToolNode
-from langgraph.graph import StateGraph, START, END
+from langgraph.graph import StateGraph, START
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_openai import ChatOpenAI
 from tools import *
 from utils import *
-import grandalf
 
 # def _set_env(var: str):
 #     if not os.environ.get(var):
@@ -35,7 +31,7 @@ system_message = SystemMessage(content=read_path("prompt/system_prompt.md"))
 # validator = ValidationPipeline(output_dir=output_path, source_dir=editor_path)
 
 class State(TypedDict):
-    messages: str | BaseMessage
+    messages: list[BaseMessage]
     structure: Dict[str, Any]
 
 # Nodes
@@ -64,7 +60,7 @@ def update(state: State):
         read_path("prompt/structure_prompt.md"), 
         directory_tree=json.dumps(project_structure, indent=4)
     )
-    return {"structure": project_structure, "messages": tool_message}
+    return {"structure": project_structure, "messages": [SystemMessage(content=tool_message)]}
 
 def list_dir(directory: str, max_depth: int = None) -> Dict[str, Any]:
     """
@@ -142,7 +138,7 @@ def list_dir(directory: str, max_depth: int = None) -> Dict[str, Any]:
 #         return "sendback"
 
 def converse(state: State):
-    return {"messages": AIMessage(content=llm.invoke([system_message] + state["messages"]))}
+    return {"messages": [llm.invoke([system_message] + state["messages"])]}
 
 def build(chkptr):
     graph_builder = StateGraph(State)
@@ -198,4 +194,3 @@ def run(user_input: str, user_id: str):
     transfer(editor_path, output_path)
 
     return response
-    
