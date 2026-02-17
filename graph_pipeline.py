@@ -69,9 +69,9 @@ def update(state: State):
     logger.info("[UPDATE] Directory snapshot refreshed (%d top-level items)", item_count)
     tool_message = str.format(
         structure_message,
-        directory_tree=json.dumps(project_structure, indent=4)
+        directory_tree=json.dumps(project_structure["structure"], indent=4)
     )
-    return {"structure": project_structure, "messages": [SystemMessage(content=tool_message) + state["messages"]]}
+    return {"structure": project_structure, "messages": [SystemMessage(content=tool_message)] + state["messages"]}
 
 def list_dir(directory: str, max_depth: int = None) -> Dict[str, Any]:
     """
