@@ -19,7 +19,7 @@ for path in [input_path, editor_path, output_path]:
     os.makedirs(path, exist_ok=True)
 
 def stream(response, delay: float):
-    for word in response.strip():
+    for word in response:#.strip():
         yield word + " "
         time.sleep(delay)
 
@@ -36,7 +36,7 @@ def chatbot():
                 user_input=prompt,
                 user_id=user_id
             )
-            st.write_stream(stream=stream(response=response, delay=0.02))
+            st.write_stream(stream=stream(response=response, delay=0.01))
 
         st.session_state.messages.append({'role': 'assistant', 'content': response})
         st.rerun()

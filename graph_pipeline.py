@@ -28,6 +28,7 @@ model=os.getenv("OPENAI_API_MODEL")
 llm_tools = list(TOOLS.values())
 llm = ChatOpenAI(model=model).bind_tools(llm_tools)
 system_message = SystemMessage(content=read_path("prompt/system_prompt.md"))
+structure_message = read_path("prompt/structure_prompt.md")
 # validator = ValidationPipeline(output_dir=output_path, source_dir=editor_path)
 
 class State(TypedDict):
@@ -57,7 +58,7 @@ def pick_tool(state: State):
 def update(state: State):
     project_structure = list_dir(editor_path)
     tool_message = str.format(
-        read_path("prompt/structure_prompt.md"), 
+        structure_message, 
         directory_tree=json.dumps(project_structure, indent=4)
     )
     return {"structure": project_structure, "messages": [SystemMessage(content=tool_message)]}
@@ -138,6 +139,7 @@ def list_dir(directory: str, max_depth: int = None) -> Dict[str, Any]:
 #         return "sendback"
 
 def converse(state: State):
+    print(state)
     return {"messages": [llm.invoke([system_message] + state["messages"])]}
 
 def build(chkptr):
@@ -193,4 +195,4 @@ def run(user_input: str, user_id: str):
     # TODO: remove when validation pipeline is ready!
     transfer(editor_path, output_path)
 
-    return response
+    return response['messages'][-1].content
