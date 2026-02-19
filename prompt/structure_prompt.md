@@ -23,7 +23,7 @@ reading file contents. All file paths are relative to the project root.
 ## Directory Tree
 
 ```
-{structure}
+{directory_tree}
 ```
 
 *This is a hierarchical representation of all files and folders in the

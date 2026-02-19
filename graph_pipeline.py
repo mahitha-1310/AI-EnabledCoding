@@ -1,4 +1,4 @@
-import os, json
+import os, json, logging, time
 from dotenv import load_dotenv
 from typing_extensions import TypedDict
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
@@ -23,10 +23,13 @@ input_path = os.getenv("INPUT_PATH")
 editor_path = os.getenv("EDITOR_PATH")
 output_path = os.getenv("OUTPUT_PATH")
 
+logger = logging.getLogger(__name__)
 graph = None
-model=os.getenv("OPENAI_API_MODEL")
+model = os.getenv("OPENAI_API_MODEL")
+logger.debug("[INIT] Loading tools and binding to model: %s", model)
 llm_tools = list(TOOLS.values())
 llm = ChatOpenAI(model=model).bind_tools(llm_tools)
+logger.debug("[INIT] Bound %d tool(s) to LLM: %s", len(llm_tools), [t.name for t in llm_tools])
 system_message = SystemMessage(content=read_path("prompt/system_prompt.md"))
 structure_message = read_path("prompt/structure_prompt.md")
 # validator = ValidationPipeline(output_dir=output_path, source_dir=editor_path)
@@ -48,55 +51,62 @@ def pick_tool(state: State):
 
     if len(message.tool_calls) > 0:
         tool_call = message.tool_calls[0]['args']['update_type']
+        logger.debug("[PICK_TOOL] LLM requested update_type: %s", tool_call)
         if tool_call == "validate":
+            logger.info("[PICK_TOOL] Routing to validation node")
             return "validate"
         elif tool_call in llm_tools:
+            logger.info("[PICK_TOOL] Routing to tool: %s", tool_call)
             return tool_call
-    
+
+    logger.debug("[PICK_TOOL] No tool call matched — falling back to 'update'")
     return "update"
 
 def update(state: State):
+    logger.debug("[UPDATE] Scanning editor directory: %s", editor_path)
     project_structure = list_dir(editor_path)
+    item_count = len(project_structure.get("structure", []))
+    logger.info("[UPDATE] Directory snapshot refreshed (%d top-level items)", item_count)
     tool_message = str.format(
-        structure_message, 
-        directory_tree=json.dumps(project_structure, indent=4)
+        structure_message,
+        directory_tree=json.dumps(project_structure["structure"], indent=4)
     )
-    return {"structure": project_structure, "messages": [SystemMessage(content=tool_message)]}
+    existing_messages = state["messages"]
+    if not isinstance(existing_messages, list):
+        existing_messages = [existing_messages]
+    return {"structure": project_structure, "messages": [SystemMessage(content=tool_message)] + existing_messages}
 
 def list_dir(directory: str, max_depth: int = None) -> Dict[str, Any]:
     """
     List all files and directories in a directory structure.
-    
+
     Args:
         directory: The directory to list
         max_depth: Maximum depth to traverse (None for unlimited)
-        
+
     Returns:
         Dictionary containing the directory structure
     """
-    logging.info(f"[LIST] Starting list operation")
-    logging.info(f"[LIST] Directory: {directory}")
-    logging.info(f"[LIST] Max depth: {max_depth}")
-    
+    depth_label = max_depth if max_depth is not None else "unlimited"
+    logger.debug("[LIST] Listing '%s' (max_depth=%s)", directory, depth_label)
+
     dir_path = getpath(directory)
-    logging.info(f"[LIST] Resolved path: {dir_path}")
-    
+
     if not dir_path.exists():
-        logging.error(f"[LIST] Directory not found: {directory}")
+        logger.error("[LIST] Directory not found: %s", directory)
         raise FileNotFoundError(f"Directory not found: {directory}")
-    
+
     if not dir_path.is_dir():
-        logging.error(f"[LIST] Path is not a directory: {directory}")
+        logger.error("[LIST] Path is not a directory: %s", directory)
         raise ValueError(f"Path is not a directory: {directory}")
-    
+
     def build_tree(path, current_depth=0):
         """Recursively build directory tree structure"""
         items = []
-        
-        # Check depth limit
+
         if max_depth is not None and current_depth >= max_depth:
             return items
-        
+
         try:
             for item in sorted(path.iterdir()):
                 stat = item.stat()
@@ -105,31 +115,26 @@ def list_dir(directory: str, max_depth: int = None) -> Dict[str, Any]:
                     "path": str(item),
                     "type": "directory" if item.is_dir() else "file",
                 }
-                
+
                 if item.is_file():
                     entry["size"] = stat.st_size
                     entry["modified"] = stat.st_mtime
                 elif item.is_dir():
                     entry["children"] = build_tree(item, current_depth + 1)
-                
+
                 items.append(entry)
         except PermissionError:
-            # Skip directories we don't have permission to read
-            logging.warning(f"[LIST] Permission denied for: {path}")
-            pass
-        
+            logger.warning("[LIST] Permission denied, skipping: %s", path)
+
         return items
-    
+
     structure = build_tree(dir_path)
-    logging.info(f"[LIST] Found {len(structure)} items in directory")
-    
-    result = {
+    logger.debug("[LIST] Found %d top-level items under '%s'", len(structure), dir_path)
+
+    return {
         "directory": str(dir_path),
         "structure": structure
     }
-    
-    logging.info(f"[LIST] List operation completed successfully")
-    return result
 
 # def determine_grade(state: State):
 #     # Does the code meet the validation standards?
@@ -139,10 +144,26 @@ def list_dir(directory: str, max_depth: int = None) -> Dict[str, Any]:
 #         return "sendback"
 
 def converse(state: State):
-    print(state)
-    return {"messages": [llm.invoke([system_message] + state["messages"])]}
+    message_count = len(state["messages"])
+    logger.debug("[CONVERSE] Invoking LLM with %d message(s) in state", message_count)
+
+    start = time.monotonic()
+    response = llm.invoke([system_message] + state["messages"])
+    elapsed = time.monotonic() - start
+
+    tool_calls = getattr(response, "tool_calls", [])
+    if tool_calls:
+        tool_names = [tc.get("name", "unknown") for tc in tool_calls]
+        logger.info("[CONVERSE] LLM responded in %.2fs — requesting tool(s): %s", elapsed, tool_names)
+    else:
+        preview = (response.content or "")[:120].replace("\n", " ")
+        logger.info("[CONVERSE] LLM responded in %.2fs — content: \"%s%s\"",
+                    elapsed, preview, "..." if len(response.content or "") > 120 else "")
+
+    return {"messages": [response]}
 
 def build(chkptr):
+    logger.info("[BUILD] Constructing graph")
     graph_builder = StateGraph(State)
 
     # NODES
@@ -166,33 +187,42 @@ def build(chkptr):
     graph_builder.add_edge("update", "converse")
     graph_builder.add_conditional_edges("converse", tools_condition)
     graph_builder.add_edge("tools", "update")
-    # One LLM thinks code is ready, it can send to validation pipeline
+    # Once LLM thinks code is ready, it can send to validation pipeline
     # graph_builder.add_conditional_edges("validate", determine_grade)
     # Failure handling
     # graph_builder.add_edge("sendback", "converse")
-    
-    return graph_builder.compile(interrupt_after=["converse"], checkpointer=chkptr)
+
+    compiled = graph_builder.compile(interrupt_after=["converse"], checkpointer=chkptr)
+    logger.info("[BUILD] Graph compiled successfully")
+    logger.debug("[BUILD] Graph structure:\n%s", compiled.get_graph().draw_ascii())
+    return compiled
 
 def run(user_input: str, user_id: str):
-
-    logging.info(f"NEW PIPELINE RUN")
-    logging.info(f"[USER] {user_id}")
-    logging.info(f"[QUERY] {user_input}")
+    logger.info("[RUN] ── New pipeline run ── user=%s", user_id)
+    logger.debug("[RUN] Query: %s", user_input)
 
     global graph
 
     if not graph:
+        logger.info("[RUN] No existing graph found — building now")
         graph = build(MemorySaver())
-        print(graph.get_graph().draw_ascii())
+    else:
+        logger.debug("[RUN] Reusing existing graph instance")
 
     # Run the graph
+    logger.debug("[RUN] Invoking graph (thread_id=%s)", user_id)
+    start = time.monotonic()
     response = graph.invoke(
-        {"messages": HumanMessage(content=user_input)},
+        {"messages": [HumanMessage(content=user_input)]},
         {"configurable": {"thread_id": user_id}}
     )
+    elapsed = time.monotonic() - start
+    logger.info("[RUN] Graph invocation complete in %.2fs", elapsed)
 
     # Bring edited code to output
     # TODO: remove when validation pipeline is ready!
+    logger.debug("[RUN] Transferring output from '%s' to '%s'", editor_path, output_path)
     transfer(editor_path, output_path)
+    logger.info("[RUN] Output transfer complete")
 
     return response['messages'][-1].content
