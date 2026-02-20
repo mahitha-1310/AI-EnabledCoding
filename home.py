@@ -7,6 +7,7 @@ import time
 import os
 
 load_dotenv()
+graph_pipeline.init()
 
 pipeline = CodebasePipeline()
 user_id = generate_user_id()

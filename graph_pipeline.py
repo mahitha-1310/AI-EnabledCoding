@@ -163,7 +163,6 @@ def converse(state: State):
     return {"messages": [response]}
 
 def build(chkptr):
-    logger.info("[BUILD] Constructing graph")
     graph_builder = StateGraph(State)
 
     # NODES
@@ -192,20 +191,23 @@ def build(chkptr):
     # Failure handling
     # graph_builder.add_edge("sendback", "converse")
 
-    compiled = graph_builder.compile(interrupt_after=["converse"], checkpointer=chkptr)
+    return graph_builder.compile(interrupt_after=["converse"], checkpointer=chkptr)
+
+def init():
+    logger.info("[BUILD] Constructing graph")
+    global graph
+    graph = build(MemorySaver())
     logger.info("[BUILD] Graph compiled successfully")
-    logger.debug("[BUILD] Graph structure:\n%s", compiled.get_graph().draw_ascii())
-    return compiled
+    print(graph.get_graph().draw_ascii())
+    # logger.debug("[BUILD] Graph structure:\n%s", graph.get_graph().draw_ascii())
 
 def run(user_input: str, user_id: str):
     logger.info("[RUN] ── New pipeline run ── user=%s", user_id)
     logger.debug("[RUN] Query: %s", user_input)
 
-    global graph
-
     if not graph:
         logger.info("[RUN] No existing graph found — building now")
-        graph = build(MemorySaver())
+        init()
     else:
         logger.debug("[RUN] Reusing existing graph instance")
 
