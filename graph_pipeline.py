@@ -205,6 +205,8 @@ def run(user_input: str, user_id: str):
     logger.info("[RUN] ── New pipeline run ── user=%s", user_id)
     logger.debug("[RUN] Query: %s", user_input)
 
+    global graph
+
     if not graph:
         logger.info("[RUN] No existing graph found — building now")
         init()
