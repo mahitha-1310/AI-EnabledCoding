@@ -5,6 +5,8 @@ from typing import List, Dict, Any
 
 DEFAULT_FLAGS = [
     "-std=c11",
+    "-O0",
+    "-g",
     "-Wall",
     "-Wextra"
 ]
@@ -303,9 +305,6 @@ class CompilationStage:
         
         with open(link_log_path, "w") as f:
             for artifact, content in results["link_output"].items():
-                # Reformat command field for prettier log printing
-                
-                
                 content = content.replace(" ", "\n\t") if artifact == "cmd" else content
                 f.write(f"{artifact}: " + f"{content}\n\n")
         

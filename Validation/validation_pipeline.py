@@ -2,6 +2,8 @@ import os
 from typing import List, Dict, Any
 from Validation.compilation_stage import CompilationStage
 from Validation.static_analysis_stage import StaticAnalysisStage
+from Validation.dynamic_analysis_stage import DynamicAnalysisStage
+from Validation.formatting_stage import FormattingStage
 from Validation.llm_metric_stage import LLMMetricStage
 
 class ValidationPipeline:
@@ -28,11 +30,15 @@ class ValidationPipeline:
             output_dir=os.path.join(output_dir, "static_analysis/"),
             project_root=self.source_dir
         )
+        self.dynamic_analysis = DynamicAnalysisStage(
+            output_dir=os.path.join(output_dir, "dynamic_analysis/")
+        )
+        self.formatting_stage = FormattingStage(
+            output_dir=os.path.join(output_dir, "formatting/")
+        )
 
         # To be implemented in future sprints
         # ====================================
-        # self.dynamic_analysis = DynamicAnalysisStage(os.path.join(output_dir, "dynamic_analysis/"))
-        # self.style_analysis = StyleAnalysisStage(output_dir)
         # self.unit_tester = UnitTestStage(output_dir)
         
         # self.llm = LLMMetricStage(
@@ -72,6 +78,18 @@ class ValidationPipeline:
             source_files=c_files,
             compile_commands=f"{self.output_dir}/compilation/"
             # ValidationTests/Test4/compilation/compile_commands.json
+        )
+
+        # Stage 3: Dynamic Analysis
+        results["dynamic_analysis"] = self.dynamic_analysis.run(
+            executable_path=results["compilation"]["executable_path"],
+            flags=[]
+        )
+
+        # Stage 4: Formatting
+        results["formatting"] = self.formatting_stage.run(
+            source_files=c_files,
+            check_only=True
         )
 
         # Further steps to be implemented later...

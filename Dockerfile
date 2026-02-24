@@ -6,7 +6,9 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         clang \
         clang-tidy \
+        clang-format \
         llvm \
+        valgrind \
         llvm-dev \
         libclang-dev \
         ca-certificates && \
