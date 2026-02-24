@@ -242,32 +242,5 @@ SCHEMAS = [
                 "required": ["path"]
             }
         }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "list",
-            "description": "List all files and directories in a directory structure.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "directory": {
-                        "type": "string",
-                        "description": "The directory to list."
-                    },
-                    "recursive": {
-                        "type": "boolean",
-                        "default": True,
-                        "description": "List recursively through subdirectories."
-                    },
-                    "max_depth": {
-                        "type": "integer",
-                        "default": None,
-                        "description": "Maximum depth to traverse (None for unlimited)."
-                    }
-                },
-                "required": ["directory"]
-            }
-        }
     }
 ]

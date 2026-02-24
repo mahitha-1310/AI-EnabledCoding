@@ -1,9 +1,8 @@
 import os, json, logging, time
 from dotenv import load_dotenv
 from typing_extensions import TypedDict
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
-from langgraph.prebuilt import tools_condition, ToolNode
-from langgraph.graph import StateGraph, START
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_openai import ChatOpenAI
 from tools import *
@@ -23,7 +22,11 @@ input_path = os.getenv("INPUT_PATH")
 editor_path = os.getenv("EDITOR_PATH")
 output_path = os.getenv("OUTPUT_PATH")
 
-logger = logging.getLogger(__name__)
+logger = logging.basicConfig(
+    filename='llm_queries.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 graph = None
 model = os.getenv("OPENAI_API_MODEL")
 logger.debug("[INIT] Loading tools and binding to model: %s", model)
@@ -40,27 +43,41 @@ class State(TypedDict):
 
 # Nodes
 
-# def validate(state: State):
-#     pass # Pass codebase to validation pipeline
+def validate(state: State):
+    pass # Pass codebase to validation pipeline
 
-# def sendback(state: State):
-#     pass # Understand why code did not meet validation standards
+def determine_quality(state: State):
+    # Understand if code met validation standards
+    return END # PLACEHOLDER
 
-def pick_tool(state: State):
+def execute_tools(state: State):
     message = state["messages"][-1]
+    tool_messages = []
 
-    if len(message.tool_calls) > 0:
-        tool_call = message.tool_calls[0]['args']['update_type']
-        logger.debug("[PICK_TOOL] LLM requested update_type: %s", tool_call)
-        if tool_call == "validate":
-            logger.info("[PICK_TOOL] Routing to validation node")
-            return "validate"
-        elif tool_call in llm_tools:
-            logger.info("[PICK_TOOL] Routing to tool: %s", tool_call)
-            return tool_call
+    for tool_call in message.tool_calls:
+        tool_name = tool_call["name"]
+        tool_args = tool_call["args"]
+        tool_call_id = tool_call["id"]
 
-    logger.debug("[PICK_TOOL] No tool call matched — falling back to 'update'")
-    return "update"
+        logger.info("[EXECUTE_TOOLS] Executing tool: %s with args: %s", tool_name, tool_args)
+
+        tool_fn = TOOLS.get(tool_name)
+        if tool_fn is None:
+            logger.warning("[EXECUTE_TOOLS] Tool not found: %s", tool_name)
+            result = f"Error: tool '{tool_name}' not found."
+        else:
+            try:
+                result = tool_fn.invoke(tool_args)
+            except Exception as e:
+                logger.error("[EXECUTE_TOOLS] Tool '%s' raised an error: %s", tool_name, e)
+                result = f"Error: {e}"
+
+        tool_messages.append(ToolMessage(
+            content=str(result),
+            tool_call_id=tool_call_id
+        ))
+
+    return {"messages": tool_messages}
 
 def update(state: State):
     logger.debug("[UPDATE] Scanning editor directory: %s", editor_path)
@@ -136,12 +153,11 @@ def list_dir(directory: str, max_depth: int = None) -> Dict[str, Any]:
         "structure": structure
     }
 
-# def determine_grade(state: State):
-#     # Does the code meet the validation standards?
-#     if(True): # End of graph
-#         return END
-#     else: # Hand back to LLM
-#         return "sendback"
+def route_converse(state: State):
+    message = state["messages"][-1]
+    if message.tool_calls:
+        return "tools"
+    return "validate"
 
 def converse(state: State):
     message_count = len(state["messages"])
@@ -172,9 +188,9 @@ def build(chkptr):
     # Update the LLM's mental representation of the codebase structure
     graph_builder.add_node("update", update)
     # Provide LLM tools
-    graph_builder.add_node("tools", ToolNode(llm_tools))
+    graph_builder.add_node("tools", execute_tools)
     # Once request is handled, validate
-    # graph_builder.add_node("validate", validate)
+    graph_builder.add_node("validate", validate)
     # Handle validation pipeline failure
     # graph_builder.add_node("sendback", sendback)
 
@@ -184,8 +200,9 @@ def build(chkptr):
     graph_builder.add_edge(START, "update")
     # Update-reflect pattern
     graph_builder.add_edge("update", "converse")
-    graph_builder.add_conditional_edges("converse", tools_condition)
-    graph_builder.add_edge("tools", "update")
+    graph_builder.add_conditional_edges("converse", route_converse)  # tools or validate
+    graph_builder.add_edge("tools", "update")                        # loop back
+    graph_builder.add_conditional_edges("validate", determine_quality)  # uncomment when ready
     # Once LLM thinks code is ready, it can send to validation pipeline
     # graph_builder.add_conditional_edges("validate", determine_grade)
     # Failure handling
