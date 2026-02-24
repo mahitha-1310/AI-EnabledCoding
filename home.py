@@ -1,5 +1,4 @@
 import streamlit as st
-from pipeline import *
 import graph_pipeline
 from utils import *
 from dotenv import load_dotenv
@@ -9,7 +8,6 @@ import os
 load_dotenv()
 graph_pipeline.init()
 
-pipeline = CodebasePipeline()
 user_id = generate_user_id()
 
 input_path = os.getenv("INPUT_PATH")
