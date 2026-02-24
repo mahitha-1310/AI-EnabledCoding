@@ -5,6 +5,8 @@ from typing import List, Dict, Any
 
 DEFAULT_FLAGS = [
     "-std=c11",
+    "-O0",
+    "-g",
     "-Wall",
     "-Wextra"
 ]
@@ -40,15 +42,36 @@ class CompilationStage:
         self.logs_dir = os.path.join(self.output_dir, "logs/")
         os.makedirs(self.logs_dir, exist_ok=True)
 
+    # ------------------------------------------------------------------------
+    #     PUBLIC METHODS 
+    # ------------------------------------------------------------------------
+
     def run(
         self, 
         source_files: List[str], 
         header_files: List[str], 
         include_dirs: List[str],
+        compiler: str = "clang",
         build_tool: str = None
     ) -> Dict[str, Any]:
         """
         Run the compilation stage of validation pipeline
+
+        Args:
+            source_files: List of paths to source code (`.c`) files. May
+                          be relative or absolute paths. 
+            header_files: List of paths to header (`.h`) files. May be
+                          relative or absolute paths.
+            include_dirs: List of paths to all include directories that 
+                          a C compiler will need. Assumed to be absolute
+                          paths.
+            compiler: Which compiler to use. Default is `clang`. `g++` support
+                      will be implemented in future sprints.
+            build_tool: The specific build tool used by the C project. Popular
+                        choices are Make & CMake. If not specified, compilation
+                        happens manually with `clang`. 
+            NOTE: build tools is not a supported feature at this point. All calls
+                to this method will perform manual compilation with `clang`.
 
         Returns:
             A dictionary mapping relevant outputs to the contents/states of the
@@ -63,7 +86,7 @@ class CompilationStage:
             results = self.run_manual_compile(
                 source_files=source_files,
                 include_dirs=include_dirs,
-                compiler="clang"
+                compiler=compiler
             )
 
         # CASE 2: Build tool provided
@@ -107,9 +130,11 @@ class CompilationStage:
                 - "executable_path": path to the generated executable, or None 
                   if linking failed or was skipped.
         """
+        # Construct complete lists of flags necessary for successful compilation
         if flags is None:
             flags = []
-        full_flags = DEFAULT_FLAGS + flags
+        system_includes = self._detect_system_include_paths(compiler)
+        full_flags = DEFAULT_FLAGS + flags + [f"-I{p}" for p in system_includes]
 
         # ====================== STEP 1 ======================
         # Compile each source (`.c`) file into an object (`.o`) file
@@ -128,8 +153,6 @@ class CompilationStage:
             "link_output": {},
             "executable_path": None
         }
-
-        # Generate 
 
         # Attempt to generate a `compile_commands.json` file for all successfully
         # compiled source files
@@ -151,8 +174,9 @@ class CompilationStage:
           
         return results
 
-    
-    # --- PRIVATE HELPERS ----------------------------------------------------
+    # ------------------------------------------------------------------------
+    #     PRIVATE HELPERS 
+    # ------------------------------------------------------------------------
 
     def _compile_source_files(
         self,
@@ -204,7 +228,7 @@ class CompilationStage:
             success = proc.returncode == 0
 
             file_outputs[src] = {
-                "cmd": ' '.join(cmd),        # to store command ran
+                "cmd": ' '.join(cmd),     # to store command ran
                 "success": success,          # to store success/fail per file
                 "stdout": proc.stdout,       # to capture stdout per file
                 "stderr": proc.stderr,       # to capture stderr per file
@@ -271,6 +295,8 @@ class CompilationStage:
 
             with open(log_path, "w") as f:
                 for artifact, content in file_results.items():
+                    # Reformat command field for prettier log printing
+                    content = content.replace(" ", "\n\t") if artifact == "cmd" else content
                     f.write(f"{artifact}: " + f"{content}\n\n")
             
         # ====================== STEP 2 ======================
@@ -279,6 +305,7 @@ class CompilationStage:
         
         with open(link_log_path, "w") as f:
             for artifact, content in results["link_output"].items():
+                content = content.replace(" ", "\n\t") if artifact == "cmd" else content
                 f.write(f"{artifact}: " + f"{content}\n\n")
         
         # ====================== STEP 3 ======================
@@ -321,3 +348,40 @@ class CompilationStage:
         out_path = os.path.join(self.output_dir, "compile_commands.json")
         with open(out_path, "w") as f:
             json.dump(compile_db, f, indent=4)
+        
+    def _detect_system_include_paths(self, compiler: str = "clang") -> List[str]:
+        """
+        Ask specified compiler (default clang) for its default system include paths.
+
+        This function is portable across Linux, macOS, and Windows.
+        """
+        try:
+            proc = subprocess.run(
+                [compiler, "-E", "-x", "c", "-", "-v"],
+                input="", text=True, capture_output=True
+            )
+
+            include_paths = []
+            recording = False
+
+            # Parse all include paths used by compiler
+            for line in proc.stderr.splitlines():
+                line = line.strip()
+
+                if line == "#include <...> search starts here:":
+                    recording = True
+                    continue
+                if line == "End of search list.":
+                    recording = False
+                    continue
+
+                if recording:
+                    # Skip non-path annotations and framework directories
+                    if "(" in line or ")" in line:
+                        continue
+                    include_paths.append(line)
+
+            return include_paths
+
+        except Exception:
+            return []

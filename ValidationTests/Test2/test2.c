@@ -8,7 +8,7 @@
  * THIS FILE CONTAINS A SEMANTIC ERROR ON LINE 29
  * 'area' should be of type `int`, not `float`. This should raise
  * a WARNING, but otherwise should still compile fine
- *     (unless a flag such as  "-Wpedantic") is provided to clang to raise
+ *     (unless a flag such as  "-Werror") is provided to clang to raise
  *      warnings to errors)
  */
 

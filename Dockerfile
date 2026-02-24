@@ -3,7 +3,16 @@ FROM python:3.11-slim
 
 # Install clang
 RUN apt-get update && \
-    apt-get install -y clang
+    apt-get install -y --no-install-recommends \
+        clang \
+        clang-tidy \
+        clang-format \
+        llvm \
+        valgrind \
+        llvm-dev \
+        libclang-dev \
+        ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
@@ -16,6 +25,9 @@ COPY pyproject.toml /home/
 
 # Install dependencies using uv
 RUN uv sync --no-dev
+
+# Added the environment path
+ENV PATH="/home/.venv/bin:$PATH"
 
 # Copy the rest of the application
 COPY . /home
