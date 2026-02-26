@@ -1,11 +1,70 @@
 import os
 from pathlib import Path
 import shutil
+from typing import Any, Dict
 import uuid
 import streamlit as st
 from pathlib import Path
 import zipfile
 import io
+
+def list_dir(directory: str, max_depth: int = None) -> Dict[str, Any]:
+    """
+    List all files and directories in a directory structure.
+
+    Args:
+        directory: The directory to list
+        max_depth: Maximum depth to traverse (None for unlimited)
+
+    Returns:
+        Dictionary containing the directory structure
+    """
+    depth_label = max_depth if max_depth is not None else "unlimited"
+
+    dir_path = getpath(directory)
+
+    if not dir_path.exists():
+        raise FileNotFoundError(f"Directory not found: {directory}")
+
+    if not dir_path.is_dir():
+        raise ValueError(f"Path is not a directory: {directory}")
+
+    def build_tree(path, current_depth=0):
+        """Recursively build directory tree structure"""
+        items = []
+
+        if max_depth is not None and current_depth >= max_depth:
+            return items
+
+        try:
+            for item in sorted(path.iterdir()):
+                stat = item.stat()
+                entry = {
+                    "name": item.name,
+                    "path": str(item),
+                    "type": "directory" if item.is_dir() else "file",
+                }
+
+                if item.is_file():
+                    entry["size"] = stat.st_size
+                    entry["modified"] = stat.st_mtime
+                elif item.is_dir():
+                    entry["children"] = build_tree(item, current_depth + 1)
+
+                items.append(entry)
+        except PermissionError as e:
+            entry = {
+                "error": "PermissionError"
+            }
+
+        return items
+
+    structure = build_tree(dir_path)
+
+    return {
+        "directory": str(dir_path),
+        "structure": structure
+    }
 
 def create_zip(directory):
     """Create a zip file from directory contents"""

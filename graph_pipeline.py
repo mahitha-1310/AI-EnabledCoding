@@ -5,19 +5,12 @@ from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, To
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_openai import ChatOpenAI
-from tools import *
-from utils import *
 from Validation.validation_pipeline import ValidationPipeline
 from langgraph.graph.message import add_messages
 from typing import Annotated
 
-# def _set_env(var: str):
-#     if not os.environ.get(var):
-#         os.environ[var] = getpass.getpass(f"{var}: ")
-
-# _set_env("OPENAI_API_KEY")
-# _set_env("OPENAI_API_BASE")
-# _set_env("OPENAI_API_MODEL")
+from tools import *
+from utils import *
 
 load_dotenv()
 
@@ -43,12 +36,15 @@ class State(TypedDict):
 
 # Nodes
 
-def validate(state: State):
-    pass # Pass codebase to validation pipeline
-
-def determine_quality(state: State):
+def grading_router(state: State):
     # Understand if code met validation standards
-    return END # PLACEHOLDER
+    return "pass" # PLACEHOLDER
+
+def post_converse_router(state: State):
+    message = state["messages"][-1]
+    if message.tool_calls:
+        return "tools"
+    return "validate"
 
 def execute_tools(state: State):
     message = state["messages"][-1]
@@ -93,71 +89,9 @@ def update(state: State):
         existing_messages = [existing_messages]
     return {"structure": project_structure, "messages": [SystemMessage(content=tool_message)] + existing_messages}
 
-def list_dir(directory: str, max_depth: int = None) -> Dict[str, Any]:
-    """
-    List all files and directories in a directory structure.
-
-    Args:
-        directory: The directory to list
-        max_depth: Maximum depth to traverse (None for unlimited)
-
-    Returns:
-        Dictionary containing the directory structure
-    """
-    depth_label = max_depth if max_depth is not None else "unlimited"
-    logger.debug("[LIST] Listing '%s' (max_depth=%s)", directory, depth_label)
-
-    dir_path = getpath(directory)
-
-    if not dir_path.exists():
-        logger.error("[LIST] Directory not found: %s", directory)
-        raise FileNotFoundError(f"Directory not found: {directory}")
-
-    if not dir_path.is_dir():
-        logger.error("[LIST] Path is not a directory: %s", directory)
-        raise ValueError(f"Path is not a directory: {directory}")
-
-    def build_tree(path, current_depth=0):
-        """Recursively build directory tree structure"""
-        items = []
-
-        if max_depth is not None and current_depth >= max_depth:
-            return items
-
-        try:
-            for item in sorted(path.iterdir()):
-                stat = item.stat()
-                entry = {
-                    "name": item.name,
-                    "path": str(item),
-                    "type": "directory" if item.is_dir() else "file",
-                }
-
-                if item.is_file():
-                    entry["size"] = stat.st_size
-                    entry["modified"] = stat.st_mtime
-                elif item.is_dir():
-                    entry["children"] = build_tree(item, current_depth + 1)
-
-                items.append(entry)
-        except PermissionError:
-            logger.warning("[LIST] Permission denied, skipping: %s", path)
-
-        return items
-
-    structure = build_tree(dir_path)
-    logger.debug("[LIST] Found %d top-level items under '%s'", len(structure), dir_path)
-
-    return {
-        "directory": str(dir_path),
-        "structure": structure
-    }
-
-def route_converse(state: State):
-    message = state["messages"][-1]
-    if message.tool_calls:
-        return "tools"
-    return "validate"
+def validate(state: State):
+    results = validator.run()
+    return 
 
 def converse(state: State):
     message_count = len(state["messages"])
@@ -200,21 +134,10 @@ def build(checkpointer):
     graph_builder.add_edge(START, "update")
     # Update-reflect pattern
     graph_builder.add_edge("update", "converse")
-    graph_builder.add_conditional_edges(
-        "converse",
-        route_converse,
-        {"tools": "tools", "validate": "validate"}
-    )
+    graph_builder.add_conditional_edges("converse", post_converse_router, {"tools": "tools", "validate": "validate"})
     graph_builder.add_edge("tools", "update")
-    graph_builder.add_conditional_edges(
-        "validate",
-        determine_quality,
-        {END: END}
-    )
     # Once LLM thinks code is ready, it can send to validation pipeline
-    # graph_builder.add_conditional_edges("validate", determine_grade)
-    # Failure handling
-    # graph_builder.add_edge("sendback", "converse")
+    graph_builder.add_conditional_edges("validate", grading_router, {"pass": END, "fail": "converse"})
 
     return graph_builder.compile(checkpointer=checkpointer)
 
