@@ -7,6 +7,9 @@ from langgraph.checkpoint.memory import MemorySaver
 from langchain_openai import ChatOpenAI
 from tools import *
 from utils import *
+from Validation.validation_pipeline import ValidationPipeline
+from langgraph.graph.message import add_messages
+from typing import Annotated
 
 # def _set_env(var: str):
 #     if not os.environ.get(var):
@@ -22,11 +25,8 @@ input_path = os.getenv("INPUT_PATH")
 editor_path = os.getenv("EDITOR_PATH")
 output_path = os.getenv("OUTPUT_PATH")
 
-logger = logging.basicConfig(
-    filename='llm_queries.log',
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 graph = None
 model = os.getenv("OPENAI_API_MODEL")
 logger.debug("[INIT] Loading tools and binding to model: %s", model)
@@ -35,10 +35,10 @@ llm = ChatOpenAI(model=model).bind_tools(llm_tools)
 logger.debug("[INIT] Bound %d tool(s) to LLM: %s", len(llm_tools), [t.name for t in llm_tools])
 system_message = SystemMessage(content=read_path("prompt/system_prompt.md"))
 structure_message = read_path("prompt/structure_prompt.md")
-# validator = ValidationPipeline(output_dir=output_path, source_dir=editor_path)
+validator = ValidationPipeline(output_dir=output_path, source_dir=editor_path)
 
 class State(TypedDict):
-    messages: list[BaseMessage]
+    messages: Annotated[list[BaseMessage], add_messages]
     structure: Dict[str, Any]
 
 # Nodes
@@ -178,7 +178,7 @@ def converse(state: State):
 
     return {"messages": [response]}
 
-def build(chkptr):
+def build(checkpointer):
     graph_builder = StateGraph(State)
 
     # NODES
@@ -200,15 +200,23 @@ def build(chkptr):
     graph_builder.add_edge(START, "update")
     # Update-reflect pattern
     graph_builder.add_edge("update", "converse")
-    graph_builder.add_conditional_edges("converse", route_converse)  # tools or validate
-    graph_builder.add_edge("tools", "update")                        # loop back
-    graph_builder.add_conditional_edges("validate", determine_quality)  # uncomment when ready
+    graph_builder.add_conditional_edges(
+        "converse",
+        route_converse,
+        {"tools": "tools", "validate": "validate"}
+    )
+    graph_builder.add_edge("tools", "update")
+    graph_builder.add_conditional_edges(
+        "validate",
+        determine_quality,
+        {END: END}
+    )
     # Once LLM thinks code is ready, it can send to validation pipeline
     # graph_builder.add_conditional_edges("validate", determine_grade)
     # Failure handling
     # graph_builder.add_edge("sendback", "converse")
 
-    return graph_builder.compile(interrupt_after=["converse"], checkpointer=chkptr)
+    return graph_builder.compile(checkpointer=checkpointer)
 
 def init():
     logger.info("[BUILD] Constructing graph")

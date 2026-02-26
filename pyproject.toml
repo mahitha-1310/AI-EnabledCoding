@@ -12,7 +12,8 @@ dependencies = [
     "grandalf>=0.8",
     "transformers",
     "torch==2.4.1",
-    "torchvision==0.19.1"
+    "torchvision==0.19.1",
+    "langgraph>=1.0.9",
 ]
 
 [build-system]
