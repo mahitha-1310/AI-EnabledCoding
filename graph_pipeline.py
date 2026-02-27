@@ -37,8 +37,7 @@ class State(TypedDict):
 # Nodes
 
 def grading_router(state: State):
-    # Understand if code met validation standards
-    return "pass" # PLACEHOLDER
+    return "pass" if grade(output_path=output_path) else "fail"
 
 def post_converse_router(state: State):
     message = state["messages"][-1]
@@ -91,7 +90,8 @@ def update(state: State):
 
 def validate(state: State):
     results = validator.run()
-    return 
+    print(results)
+    return state
 
 def converse(state: State):
     message_count = len(state["messages"])
