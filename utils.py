@@ -7,27 +7,35 @@ import streamlit as st
 import zipfile
 import io
 import json
-from graders import *
 
 SUMMARY_PATH = os.path.join("logs", "summary.json")
 
 def grade(output_path: str):
-    for stage, function in ANALYSIS_MAP.items():
-        path = os.path.join(output_path, stage, SUMMARY_PATH)
-        with open(path, 'r', encoding='utf-8') as file:
-            json_arg = json.load(file)
-            result = function.invoke(json_arg)
 
+    if not output_path.exists():
+        raise FileNotFoundError(f"Path not found: {output_path}")
 
+    from graders import ANALYSIS
 
+    try:
+        for stage, functions in ANALYSIS.items():
+            path = os.path.join(output_path, stage, SUMMARY_PATH)
+            with open(path, 'r', encoding='utf-8') as file:
+                success = functions["function"].invoke(json.load(file))
+                if not success:
+                    accept_program = False
+                    if "message" in functions.keys():
+                        accept_program = functions["fail_case"].invoke(functions["message"])
+                    else:
+                        accept_program = functions["fail_case"].invoke()
 
-
-
-
-
-
-
-
+                    if not accept_program:
+                        return False
+    except Exception as e:
+        print(f"{type(e)}: {e.with_traceback()}")
+        print("An internal grader failure as occured. DO NOT assume code product meets standards!")
+    
+    return True
 
 def list_dir(directory: str, max_depth: int = None) -> Dict[str, Any]:
     """
