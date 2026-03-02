@@ -28,6 +28,9 @@ def chatbot():
         # Add prompt to chat
         st.chat_message('user').markdown(prompt)
         st.session_state.messages.append({'role': 'user', 'content': prompt})
+
+        clear_directories([editor_path, output_path])
+        transfer(source=input_path, destination=editor_path)
         
         # Produce response
         with st.chat_message('assistant'):
@@ -36,6 +39,9 @@ def chatbot():
                 user_id=user_id
             )
             st.write_stream(stream=stream(response=response, delay=0.01))
+        
+        clear_directory(input_path)
+        transfer(source=editor_path, destination=output_path)
 
         st.session_state.messages.append({'role': 'assistant', 'content': response})
         st.rerun()
@@ -72,6 +78,7 @@ def codebase_clear():
             try:
                 clear_directory(editor_path)
                 clear_directory(input_path)
+                clear_directory(output_path)
                 st.success("Directory cleared successfully!")
                 st.rerun()
             except Exception as e:

@@ -37,28 +37,7 @@ def grade(output_path: str):
     
     return True
 
-def list_dir(directory: str, max_depth: int = None) -> Dict[str, Any]:
-    """
-    List all files and directories in a directory structure.
-
-    Args:
-        directory: The directory to list
-        max_depth: Maximum depth to traverse (None for unlimited)
-
-    Returns:
-        Dictionary containing the directory structure
-    """
-    depth_label = max_depth if max_depth is not None else "unlimited"
-
-    dir_path = getpath(directory)
-
-    if not dir_path.exists():
-        raise FileNotFoundError(f"Directory not found: {directory}")
-
-    if not dir_path.is_dir():
-        raise ValueError(f"Path is not a directory: {directory}")
-
-    def build_tree(path, current_depth=0):
+def build_tree(path, max_depth, current_depth=0):
         """Recursively build directory tree structure"""
         items = []
 
@@ -88,7 +67,27 @@ def list_dir(directory: str, max_depth: int = None) -> Dict[str, Any]:
 
         return items
 
-    structure = build_tree(dir_path)
+def list_dir(directory: str, max_depth: int = None) -> Dict[str, Any]:
+    """
+    List all files and directories in a directory structure.
+
+    Args:
+        directory: The directory to list
+        max_depth: Maximum depth to traverse (None for unlimited)
+
+    Returns:
+        Dictionary containing the directory structure
+    """
+
+    dir_path = getpath(directory)
+
+    if not dir_path.exists():
+        raise FileNotFoundError(f"Directory not found: {directory}")
+
+    if not dir_path.is_dir():
+        raise ValueError(f"Path is not a directory: {directory}")
+
+    structure = build_tree(path=dir_path, max_depth=max_depth)
 
     return {
         "directory": str(dir_path),
@@ -121,6 +120,12 @@ def clear_directory(directory):
         return True
     return False
 
+def clear_directories(directories: list[str]):
+    sucesses = {}
+    for directory in directories:
+        sucesses[directory] = clear_directory(directory=directory)
+    return sucesses
+
 def read_path(file_path):
     """Read system prompt using pathlib."""
     path = Path(file_path)
@@ -129,15 +134,6 @@ def read_path(file_path):
         raise FileNotFoundError(f"System prompt file not found: {file_path}")
     
     return path.read_text(encoding='utf-8')
-
-def write_files(file_list, target_dir):
-    # Create target directory if it doesn't exist
-    os.makedirs(target_dir, exist_ok=True)
-    
-    # Copy each file to the target directory
-    for file_path in file_list:
-        if os.path.isfile(file_path):
-            shutil.copy2(file_path, target_dir)
 
 def transfer(source:str, destination:str):
     src_path = Path(source)
