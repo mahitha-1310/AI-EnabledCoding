@@ -1,20 +1,17 @@
 import streamlit as st
-import graph_pipeline
+from pipeline import Pipeline
 from utils import *
 from dotenv import load_dotenv
 import time
 import os
 
-load_dotenv()
-graph_pipeline.init()
+CHATBOT_MESSAGE = "Please explain what you would like me to do!"
 
+load_dotenv()
+pipeline = Pipeline()
 user_id = generate_user_id()
 
-input_path = os.getenv("INPUT_PATH")
-editor_path = os.getenv("EDITOR_PATH")
-output_path = os.getenv("OUTPUT_PATH")
-
-for path in [input_path, editor_path, output_path]:
+for path in [pipeline.input_path, pipeline.editor_path, pipeline.output_path]:
     os.makedirs(path, exist_ok=True)
 
 def stream(response, delay: float):
@@ -23,25 +20,25 @@ def stream(response, delay: float):
         time.sleep(delay)
 
 def chatbot():
-    prompt = st.chat_input("Please explain what you would like me to do!")
+    prompt = st.chat_input(CHATBOT_MESSAGE)
     if prompt and (not prompt.strip() == ""):
         # Add prompt to chat
         st.chat_message('user').markdown(prompt)
         st.session_state.messages.append({'role': 'user', 'content': prompt})
 
-        clear_directories([editor_path, output_path])
-        transfer(source=input_path, destination=editor_path)
+        clear_directories([pipeline.editor_path, pipeline.output_path])
+        transfer(source=pipeline.input_path, destination=pipeline.editor_path)
         
         # Produce response
         with st.chat_message('assistant'):
-            response = graph_pipeline.run(
+            response = pipeline.run(
                 user_input=prompt,
                 user_id=user_id
             )
             st.write_stream(stream=stream(response=response, delay=0.01))
         
-        clear_directory(input_path)
-        transfer(source=editor_path, destination=output_path)
+        clear_directory(pipeline.input_path)
+        transfer(source=pipeline.editor_path, destination=pipeline.output_path)
 
         st.session_state.messages.append({'role': 'assistant', 'content': response})
         st.rerun()
@@ -56,13 +53,13 @@ def chatbox():
 
 def codebase_download():
     if st.button("Download Codebase", use_container_width=True):
-        if os.path.exists(output_path) and os.listdir(output_path):
+        if os.path.exists(pipeline.output_path) and os.listdir(pipeline.output_path):
             try:
-                zip_data = create_zip(output_path)
+                zip_data = create_zip(pipeline.output_path)
                 st.download_button(
                     label="Click to Download ZIP",
                     data=zip_data,
-                    file_name=f"{os.path.basename(output_path)}.zip",
+                    file_name=f"{os.path.basename(pipeline.output_path)}.zip",
                     mime="application/zip",
                     use_container_width=True
                 )
@@ -74,11 +71,11 @@ def codebase_download():
 
 def codebase_clear():
     if st.button("Clear Codebase", use_container_width=True):
-        if os.path.exists(editor_path) and os.path.exists(input_path):
+        if os.path.exists(pipeline.editor_path) and os.path.exists(pipeline.input_path):
             try:
-                clear_directory(editor_path)
-                clear_directory(input_path)
-                clear_directory(output_path)
+                clear_directory(pipeline.editor_path)
+                clear_directory(pipeline.input_path)
+                clear_directory(pipeline.output_path)
                 st.success("Directory cleared successfully!")
                 st.rerun()
             except Exception as e:
@@ -95,8 +92,8 @@ def file_uploader():
         # Read the file data
         bytes_data = uploaded_file.read()
         
-        # Save the file to input_path
-        file_path = os.path.join(input_path, uploaded_file.name)
+        # Save the file to pipeline.input_path
+        file_path = os.path.join(pipeline.input_path, uploaded_file.name)
         with open(file_path, "wb") as f:
             f.write(bytes_data)
 
