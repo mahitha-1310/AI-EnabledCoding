@@ -21,6 +21,7 @@ MESSAGES_TO_KEEP = 10 # how many recent messages to keep after summarizing
 
 class State(TypedDict):
         messages: Annotated[list[BaseMessage], add_messages]
+        summaries: list[BaseMessage]
         structure: Dict[str, Any]
         success: list[Dict[str, Any]]
 
@@ -95,7 +96,10 @@ class Pipeline():
             self.structure_message,
             directory_tree=json.dumps(project_structure["structure"], indent=4)
         )
-        return {"structure": project_structure, "messages": [SystemMessage(content=tool_message)]}
+
+        trimmed = state["messages"][-SUMMARIZE_AFTER:]
+
+        return {"structure": project_structure, "messages": trimmed + [SystemMessage(content=tool_message)]}
 
     def validate_node(self, state: State):
         results = self.validator.run()
@@ -120,7 +124,7 @@ class Pipeline():
             content=f"[Conversation summary so far]: {summary.content}"
         )
     
-        return {"messages": [summary_message] + preserve}
+        return {"summaries": [summary_message] + preserve}
     
     def sendback_node(self, state: State):
 
@@ -132,7 +136,8 @@ class Pipeline():
         return {"messages": [SystemMessage(content=response.content)]}
 
     def converse_node(self, state: State):
-        response = self.model.invoke([SystemMessage(content=self.system_message)] + state["messages"])
+        history = state.get("summarized_messages") or state["messages"]
+        response = self.model.invoke([SystemMessage(content=self.system_message)] + history)
         return {"messages": [response]}
 
     #############
