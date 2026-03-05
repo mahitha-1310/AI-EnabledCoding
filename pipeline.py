@@ -87,7 +87,7 @@ class Pipeline():
                 tool_call_id=tool_call_id
             ))
 
-        return {"messages": [tool_messages] + state["messages"]}
+        return {"messages": tool_messages}
 
     def update_node(self, state: State):
         project_structure = list_dir(self.editor_path)
@@ -95,14 +95,12 @@ class Pipeline():
             self.structure_message,
             directory_tree=json.dumps(project_structure["structure"], indent=4)
         )
-        if not isinstance(existing_messages, list):
-            existing_messages = [existing_messages]
-        return {"structure": project_structure, "messages": [SystemMessage(content=tool_message)] + state["messages"]}
+        return {"structure": project_structure, "messages": [SystemMessage(content=tool_message)]}
 
     def validate_node(self, state: State):
         results = self.validator.run()
         print(results)
-        return state["success"].append(results)
+        return {"success": state["success"] + [results]}
     
     def summarize_node(self, state: State):
         messages = state["messages"]
@@ -110,18 +108,28 @@ class Pipeline():
         summarize = messages[:-MESSAGES_TO_KEEP]
         preserve  = messages[-MESSAGES_TO_KEEP:]
 
-        history = "\n".join(f"{msg.__class__.__name__}: {msg.content}" for msg in summarize if msg.content)
+        history = "\n".join(
+            f"{msg.__class__.__name__}: {msg.content}"
+            for msg in summarize
+            if msg.content and not isinstance(msg, SystemMessage)
+        )
 
-        summary = self.model.invoke(HumanMessage(content=self.summarization_message.format(history=history)))
+        summary = self.model.invoke([HumanMessage(content=self.summarization_message.format(history=history))])
 
         summary_message = SystemMessage(
             content=f"[Conversation summary so far]: {summary.content}"
         )
     
-        return [summary_message] + preserve
+        return {"messages": [summary_message] + preserve}
     
     def sendback_node(self, state: State):
-        return state
+
+        # TODO: Obtain relevant validation logs/jsons!
+        summary_json = json.dumps(state["success"][-1])
+
+        response = self.model.invoke([HumanMessage(content=self.feedback_message.format(summary=summary_json))])
+
+        return {"messages": [SystemMessage(content=response.content)]}
 
     def converse_node(self, state: State):
         response = self.model.invoke([SystemMessage(content=self.system_message)] + state["messages"])
@@ -154,7 +162,7 @@ class Pipeline():
         # Update-reflect pattern
         graph_builder.add_edge("summarize", "converse")
         graph_builder.add_conditional_edges("update", self.summarization_router, {"summarize": "summarize", "converse": "converse"})
-        graph_builder.add_conditional_edges("sendback", self.summarization_router, {"summarize": "summarize", "converse": "converse"})
+        graph_builder.add_edge("sendback", "converse")
 
         graph_builder.add_conditional_edges("converse", self.post_converse_router, {"tools": "tools", "validate": "validate"})
         graph_builder.add_edge("tools", "update")
