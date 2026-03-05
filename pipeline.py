@@ -1,5 +1,4 @@
 import os, json
-from dotenv import load_dotenv
 from typing_extensions import TypedDict
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import StateGraph, START, END
@@ -12,12 +11,18 @@ from typing import Annotated
 from tools import *
 from utils import *
 
-SYSTEM_PROMPT    = os.path.join("prompt", "system_prompt.md")
+SYSTEM_PROMPT = os.path.join("prompt", "system_prompt.md")
+FEEDBACK_PROMPT = os.path.join("prompt", "feedback_prompt.md")
 STRUCTURE_PROMPT = os.path.join("prompt", "structure_prompt.md")
+SUMMARIZATION_PROMPT = os.path.join("prompt", "summarization_prompt.md")
+
+SUMMARIZE_AFTER = 20  # summarize when message count exceeds this
+MESSAGES_TO_KEEP = 10 # how many recent messages to keep after summarizing
 
 class State(TypedDict):
         messages: Annotated[list[BaseMessage], add_messages]
         structure: Dict[str, Any]
+        success: list[Dict[str, Any]]
 
 class Pipeline():
     def __init__(self):
@@ -31,12 +36,14 @@ class Pipeline():
         self.model = ChatOpenAI(model=model_name).bind_tools(model_tools)
 
         self.system_message = read_path(SYSTEM_PROMPT)
+        self.feedback_message = read_path(FEEDBACK_PROMPT)
         self.structure_message = read_path(STRUCTURE_PROMPT)
+        self.summarization_message = read_path(SUMMARIZATION_PROMPT)
 
         self.validator = ValidationPipeline(output_dir=self.output_path, source_dir=self.editor_path)
 
         self.graph = self.build(MemorySaver())
-        print(graph.get_graph().draw_ascii())
+        print(self.graph.get_graph().draw_ascii())
 
     ### ROUTERS ###
 
@@ -49,6 +56,10 @@ class Pipeline():
             return "tools"
         return "validate"
     
+    def summarization_router(self, state: State):
+        return "summarize" if len(state["messages"]) > SUMMARIZE_AFTER else "converse"
+
+
     ###############
     
     ### NODES ###
@@ -91,27 +102,29 @@ class Pipeline():
     def validate_node(self, state: State):
         results = self.validator.run()
         print(results)
-        return state
+        return state["success"].append(results)
+    
+    def summarize_node(self, state: State):
+        messages = state["messages"]
+
+        summarize = messages[:-MESSAGES_TO_KEEP]
+        preserve  = messages[-MESSAGES_TO_KEEP:]
+
+        history = "\n".join(f"{msg.__class__.__name__}: {msg.content}" for msg in summarize if msg.content)
+
+        summary = self.model.invoke(HumanMessage(content=self.summarization_message.format(history=history)))
+
+        summary_message = SystemMessage(
+            content=f"[Conversation summary so far]: {summary.content}"
+        )
+    
+        return [summary_message] + preserve
     
     def sendback_node(self, state: State):
         return state
 
     def converse_node(self, state: State):
-        # message_count = len(state["messages"])
-
-        # start = time.monotonic()
         response = self.model.invoke([SystemMessage(content=self.system_message)] + state["messages"])
-        # elapsed = time.monotonic() - start
-
-        # tool_calls = getattr(response, "tool_calls", [])
-        # if tool_calls:
-        #     tool_names = [tc.get("name", "unknown") for tc in tool_calls]
-        #     logger.info("[CONVERSE] LLM responded in %.2fs — requesting tool(s): %s", elapsed, tool_names)
-        # else:
-        #     preview = (response.content or "")[:120].replace("\n", " ")
-        #     logger.info("[CONVERSE] LLM responded in %.2fs — content: \"%s%s\"",
-        #                 elapsed, preview, "..." if len(response.content or "") > 120 else "")
-
         return {"messages": [response]}
 
     #############
@@ -121,10 +134,12 @@ class Pipeline():
 
         # NODES
 
-        # LLM's thinking node
-        graph_builder.add_node("converse", self.converse_node)
         # Update the LLM's mental representation of the codebase structure
         graph_builder.add_node("update", self.update_node)
+        # If message history gets too long, summarize
+        graph_builder.add_node("summarize", self.summarize_node)
+        # LLM's thinking node
+        graph_builder.add_node("converse", self.converse_node)
         # Provide LLM tools
         graph_builder.add_node("tools", self.tool_node)
         # Once request is handled, validate
@@ -137,28 +152,23 @@ class Pipeline():
         # Entry
         graph_builder.add_edge(START, "update")
         # Update-reflect pattern
-        graph_builder.add_edge("update", "converse")
+        graph_builder.add_edge("summarize", "converse")
+        graph_builder.add_conditional_edges("update", self.summarization_router, {"summarize": "summarize", "converse": "converse"})
+        graph_builder.add_conditional_edges("sendback", self.summarization_router, {"summarize": "summarize", "converse": "converse"})
+
         graph_builder.add_conditional_edges("converse", self.post_converse_router, {"tools": "tools", "validate": "validate"})
         graph_builder.add_edge("tools", "update")
         # Once LLM thinks code is ready, it can send to validation pipeline
-        graph_builder.add_conditional_edges("validate", self.grading_router, {"pass": END, "fail": "converse"})
+        graph_builder.add_conditional_edges("validate", self.grading_router, {"pass": END, "fail": "sendback"})
 
         return graph_builder.compile(checkpointer=checkpointer)
 
-    def init(self):
-        global graph
-        graph = self.build(MemorySaver())
-        print(graph.get_graph().draw_ascii())
-        # logger.debug("[BUILD] Graph structure:\n%s", graph.get_graph().draw_ascii())
+def run(pipeline: Pipeline, user_input: str, user_id: str):
 
-def run(self, user_input: str, user_id: str):
+    if not pipeline.graph:
+        pipeline.build(MemorySaver())
 
-    global graph
-
-    if not graph:
-        self.init()
-
-    response = graph.invoke(
+    response = pipeline.graph.invoke(
         {"messages": [HumanMessage(content=user_input)]},
         {"configurable": {"thread_id": user_id}}
     )

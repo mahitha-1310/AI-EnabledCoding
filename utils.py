@@ -20,7 +20,7 @@ def assert_dir(path: Path) -> None:
     if not path.is_dir():
         raise ValueError(f"Path is not a directory: {path}")
 
-def assert_file(path:Path):
+def assert_file(path: Path) -> None:
     assert_exists(path)
     if not path.is_file():
         raise ValueError(f"Path is not a file: {path}")
@@ -34,8 +34,6 @@ def get_path(path: str) -> Path:
     base_path = Path(tail)
     requested_path = Path(path)
 
-    # Strip leading component if it duplicates the base directory name
-    # e.g. EDITOR_PATH="sandbox", path="sandbox/test.c" → sandbox/test.c
     if requested_path.parts and requested_path.parts[0] == base_path.name:
         requested_path = Path(*requested_path.parts[1:])
 
