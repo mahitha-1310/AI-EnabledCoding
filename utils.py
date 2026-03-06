@@ -26,13 +26,21 @@ def assert_file(path: Path) -> None:
         raise ValueError(f"Path is not a file: {path}")
 
 def get_path(path: str) -> Path:
-    """Resolve a path relative to the EDITOR_PATH environment variable."""
+    """Resolve a path relative to the EDITOR_PATH environment variable.
+
+    If the path is already absolute, return it directly without prepending
+    EDITOR_PATH — handles cases where INPUT_PATH / OUTPUT_PATH are full paths.
+    """
+    requested_path = Path(path)
+
+    if requested_path.is_absolute():
+        return requested_path
+
     tail = os.getenv("EDITOR_PATH")
     if tail is None:
         raise ValueError("`EDITOR_PATH` is not set. Please provide a valid directory path.")
 
     base_path = Path(tail)
-    requested_path = Path(path)
 
     if requested_path.parts and requested_path.parts[0] == base_path.name:
         requested_path = Path(*requested_path.parts[1:])
@@ -40,18 +48,32 @@ def get_path(path: str) -> Path:
     return base_path / requested_path
 
 def read_path(file_path: str) -> str:
-    """Read and return the text content of a file."""
-    path = get_path(file_path)
+    """Read and return the text content of a file, resolved relative to the project root."""
+    path = Path(file_path)
+    if not path.is_absolute():
+        path = Path(__file__).parent / path
     assert_exists(path)
     return path.read_text(encoding="utf-8")
+
+def project_path(path: str) -> Path:
+    """Resolve a path relative to the project root (directory containing utils.py).
+    
+    Use this for INPUT_PATH, OUTPUT_PATH, and other env vars that are siblings
+    of EDITOR_PATH, not children of it.
+    """
+    p = Path(path)
+    if p.is_absolute():
+        return p
+    return Path(__file__).parent / p
+
 
 def transfer(source: str, destination: str) -> None:
     """
     Recursively copy *source* directory into *destination*, honouring
     comma-separated glob patterns in the IGNORE environment variable.
     """
-    src_path = get_path(source)
-    dst_path = get_path(destination)
+    src_path = project_path(source)
+    dst_path = project_path(destination)
 
     assert_dir(src_path)
 
@@ -78,7 +100,7 @@ def transfer(source: str, destination: str) -> None:
 
 def write_files(file_list: list[str], target_dir: str) -> None:
     """Copy a flat list of files into *target_dir* using transfer primitives."""
-    dst = get_path(target_dir)
+    dst = project_path(target_dir)
     dst.mkdir(parents=True, exist_ok=True)
     for file_path in file_list:
         src = Path(file_path)
@@ -138,7 +160,7 @@ def list_dir(directory: str, max_depth: int | None = None) -> Dict[str, Any]:
     Returns:
         Dictionary containing the directory structure
     """
-    dir_path = get_path(directory)
+    dir_path = project_path(directory)
     assert_dir(dir_path)
 
     return {
