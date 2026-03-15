@@ -7,12 +7,9 @@ import os
 
 CHATBOT_MESSAGE = "Please explain what you would like me to do!"
 
-load_dotenv()
-pipeline = Pipeline()
-user_id = generate_user_id()
-
-for path in [pipeline.input_path, pipeline.editor_path, pipeline.output_path]:
-    os.makedirs(path, exist_ok=True)
+@st.cache_resource
+def get_pipeline():
+    return Pipeline()
 
 def stream(response, delay: float):
     for word in response:#.strip():
@@ -99,6 +96,14 @@ def file_uploader():
             f.write(bytes_data)
 
 if __name__ == '__main__':
+    load_dotenv()
+    
+    pipeline = get_pipeline()
+    user_id = generate_user_id()
+
+    for path in [pipeline.input_path, pipeline.editor_path, pipeline.output_path]:
+        os.makedirs(path, exist_ok=True)
+
     st.title("HASAIM")
     st.subheader("High Assurance System AI Modernization")
 

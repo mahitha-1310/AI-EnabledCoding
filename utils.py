@@ -169,6 +169,8 @@ def list_dir(directory: str, max_depth: int | None = None) -> Dict[str, Any]:
     }
 
 def grade(output_path: Path) -> bool:
+    if output_path is not Path:
+        output_path = Path(output_path)
     assert_exists(output_path)
 
     try:

@@ -104,7 +104,7 @@ class Pipeline():
     def validate_node(self, state: State):
         results = self.validator.run()
         print(results)
-        return {"success": state["success"] + [results]}
+        return {"success": state.get("success", []) + [results]}
     
     def summarize_node(self, state: State):
         messages = state["messages"]
@@ -129,7 +129,7 @@ class Pipeline():
     def sendback_node(self, state: State):
 
         # TODO: Obtain relevant validation logs/jsons!
-        summary_json = json.dumps(state["success"][-1])
+        summary_json = json.dumps(state.get("success", [{}])[-1])
 
         response = self.model.invoke([HumanMessage(content=self.feedback_message.format(summary=summary_json))])
 
