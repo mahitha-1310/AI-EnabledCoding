@@ -94,6 +94,9 @@ class CompilationStage:
         else:
             # self.run_via_build_tool()
             results = {"error": "user-defined build tool functionality not yet supported"}
+        
+        # Ensure directory is created for logs
+        os.makedirs(self.output_dir, exist_ok=True)
 
         # Log results to files in `logs/` subdirectory
         self._write_logs(results)
