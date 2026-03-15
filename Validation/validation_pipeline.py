@@ -81,10 +81,17 @@ class ValidationPipeline:
         )
 
         # Stage 3: Dynamic Analysis
-        results["dynamic_analysis"] = self.dynamic_analysis.run(
-            executable_path=results["compilation"]["executable_path"],
-            flags=[]
-        )
+        exe_path = results["compilation"].get("executable_path")
+        if exe_path is None:
+            results["dynamic_analysis"] = {
+                "success": False,
+                "reason": "Analysis was skipped since no valid executable was produced."
+            }
+        else:
+            results["dynamic_analysis"] = self.dynamic_analysis.run(
+                executable_path=exe_path,
+                flags=[]
+            )
 
         # Stage 4: Formatting
         results["formatting"] = self.formatting_stage.run(

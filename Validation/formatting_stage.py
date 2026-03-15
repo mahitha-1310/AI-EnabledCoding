@@ -70,11 +70,23 @@ class FormattingStage:
                     file_path
                 ]
 
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True
-            )
+            try:
+                proc = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True
+                )
+            except FileNotFoundError:
+                result = {
+                    "cmd": ' '.join(cmd),
+                    "success": False,
+                    "stdout": "",
+                    "stderr": (
+                        f"Error: 'clang-format' was not found."
+                    )
+                }
+                continue
+
 
             formatted_output_path = None
 
@@ -112,6 +124,8 @@ class FormattingStage:
 
     def write_logs(self, result: Dict[str, Any]) -> None:
         """Write formatting output to log files."""
+
+        os.makedirs(self.logs_dir, exist_ok=True)
 
         log_path = os.path.join(self.logs_dir, "clang_format.log")
         summary_path = os.path.join(self.logs_dir, "summary.json")

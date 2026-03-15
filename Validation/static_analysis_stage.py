@@ -104,21 +104,36 @@ class StaticAnalysisStage:
                 "-p", build_dir
             ]
 
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True
-            )
+            try:
+                proc = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True
+                )
+                success = proc.returncode == 0
+                stdout = proc.stdout
+                stderr = proc.stderr
+            except FileNotFoundError:
+                success = False
+                all_success = False
+                file_outputs[src_abs] = {
+                    "cmd": ' '.join(cmd),
+                    "success": False,
+                    "stdout": "",
+                    "stderr": (
+                        f"Error: '{static_analyzer}' was not found."
+                    )
+                }
+                continue
 
-            success = proc.returncode == 0
             if not success:
                 all_success = False
 
             file_outputs[src_abs] = {
                 "cmd": ' '.join(cmd),
                 "success": success,
-                "stdout": proc.stdout,
-                "stderr": proc.stderr
+                "stdout": stdout,
+                "stderr": stderr
             }
 
         return {
@@ -128,6 +143,8 @@ class StaticAnalysisStage:
 
     def _write_logs(self, results: Dict[str, Any]):
         """Write per-file logs + summary JSON."""
+
+        os.makedirs(self.logs_dir, exist_ok=True)
 
         # Write per-file logs
         for src, file_result in results["file_outputs"].items():

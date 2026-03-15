@@ -159,7 +159,8 @@ class CompilationStage:
 
         # Attempt to generate a `compile_commands.json` file for all successfully
         # compiled source files
-        self._generate_compile_commands(results)
+        # TODO: Unsure how to fix this...
+        # self._generate_compile_commands(results)
 
         # ====================== STEP 2 ======================
         # If any compilation failed, abort linking stage
@@ -289,6 +290,8 @@ class CompilationStage:
             results: a dictionary containing pertinent information gathered
                      from an attempt to compile and link `.c` files
         """
+
+        os.makedirs(self.logs_dir, exist_ok=True)
 
         # ====================== STEP 1 ======================
         # Write per-file compile logs
