@@ -16,40 +16,55 @@ FEEDBACK_PROMPT = os.path.join("prompt", "feedback_prompt.md")
 STRUCTURE_PROMPT = os.path.join("prompt", "structure_prompt.md")
 SUMMARIZATION_PROMPT = os.path.join("prompt", "summarization_prompt.md")
 
-SUMMARIZE_AFTER = 20  # summarize when message count exceeds this
-MESSAGES_TO_KEEP = 10 # how many recent messages to keep after summarizing
-
 class State(TypedDict):
         messages: Annotated[list[BaseMessage], add_messages]
         summaries: list[BaseMessage]
         structure: Dict[str, Any]
         success: list[Dict[str, Any]]
+        attempts: int
 
 class Pipeline():
     def __init__(self):
-        
+
+        # Model init
+        self.summarize_after = int(os.getenv("SUMMARIZE_AFTER")) # summarize when message count exceeds this
+        self.messages_to_keep = int(os.getenv("MESSAGES_TO_KEEP")) # how many recent messages to keep after summarizing
+        self.return_anyway_after = int(os.getenv("ATTEMPTS"))
+
+        model_name = os.getenv("OPENAI_API_MODEL")
+        model_temperature = float(os.getenv("TEMPERATURE"))
+        model_tools = list(TOOLS.values())
+        self.model = ChatOpenAI(
+            model=model_name, 
+            temperature=model_temperature
+        ).bind_tools(model_tools)
+
+        # Path init
         self.input_path = os.getenv("INPUT_PATH")
         self.editor_path = os.getenv("EDITOR_PATH")
         self.output_path = os.getenv("OUTPUT_PATH")
-
-        model_name = os.getenv("OPENAI_API_MODEL")
-        model_tools = list(TOOLS.values())
-        self.model = ChatOpenAI(model=model_name).bind_tools(model_tools)
 
         self.system_message = read_path(SYSTEM_PROMPT)
         self.feedback_message = read_path(FEEDBACK_PROMPT)
         self.structure_message = read_path(STRUCTURE_PROMPT)
         self.summarization_message = read_path(SUMMARIZATION_PROMPT)
 
+        # Validation init
         self.validator = ValidationPipeline(output_dir=self.output_path, source_dir=self.editor_path)
 
+        # Pipeline init
         self.graph = self.build(MemorySaver())
         print(self.graph.get_graph().draw_ascii())
 
     ### ROUTERS ###
 
     def grading_router(self, state: State):
-        return "pass" if grade(output_path=self.output_path) else "fail"
+        if state["attempts"] >= self.return_anyway_after:
+            print("[WARNING]: Code is not guaranteed to be functional.")
+            return "insufficient"
+        elif grade(output_path=self.output_path):
+            return "pass"
+        return "fail"
 
     def post_converse_router(self, state: State):
         message = state["messages"][-1]
@@ -58,7 +73,7 @@ class Pipeline():
         return "validate"
     
     def summarization_router(self, state: State):
-        return "summarize" if len(state["messages"]) > SUMMARIZE_AFTER else "converse"
+        return "summarize" if len(state["messages"]) > self.summarize_after else "converse"
 
 
     ###############
@@ -97,20 +112,23 @@ class Pipeline():
             directory_tree=json.dumps(project_structure["structure"], indent=4)
         )
 
-        trimmed = state["messages"][-SUMMARIZE_AFTER:]
+        trimmed = state["messages"][-self.summarize_after:]
 
         return {"structure": project_structure, "messages": trimmed + [SystemMessage(content=tool_message)]}
 
     def validate_node(self, state: State):
         results = self.validator.run()
         print(results)
+
+        state["attempts"] = 1 if not state["attempts"] else (state["attempts"] + 1)
+
         return {"success": state.get("success", []) + [results]}
     
     def summarize_node(self, state: State):
         messages = state["messages"]
 
-        summarize = messages[:-MESSAGES_TO_KEEP]
-        preserve  = messages[-MESSAGES_TO_KEEP:]
+        summarize = messages[:-self.messages_to_keep]
+        preserve  = messages[-self.messages_to_keep:]
 
         history = "\n".join(
             f"{msg.__class__.__name__}: {msg.content}"
@@ -172,7 +190,7 @@ class Pipeline():
         graph_builder.add_conditional_edges("converse", self.post_converse_router, {"tools": "tools", "validate": "validate"})
         graph_builder.add_edge("tools", "update")
         # Once LLM thinks code is ready, it can send to validation pipeline
-        graph_builder.add_conditional_edges("validate", self.grading_router, {"pass": END, "fail": "sendback"})
+        graph_builder.add_conditional_edges("validate", self.grading_router, {"pass": END, "fail": "sendback", "insufficient": END})
 
         return graph_builder.compile(checkpointer=checkpointer)
 
