@@ -215,3 +215,29 @@ def generate_user_id() -> str:
             st.session_state.user_id = new_id
             st.query_params["uid"] = new_id
     return st.session_state.user_id
+
+@st.dialog("LLM Attempt Limit Reached")
+def request_retry(num_attempts: int) -> bool:
+    """Ask user if they should continue with prompting the llm."""
+
+    st.write("How would you like to proceed?")
+    choice = st.radio(
+        label="Select an option:",
+        options=[
+            "Stop Attempting", 
+            "Attempt One More Time", 
+            f"Attempt {num_attempts} More Times"
+        ],
+        index=0 # Default selection: Stop Attempting
+    )
+    
+    if st.button("Confirm", disabled=choice is None):
+        st.session_state.confirmed_choice = choice
+        st.rerun()
+    
+    if choice == "Attempt One More Time":
+        return 1
+    elif choice == f"Attempt {num_attempts} More Times":
+        return num_attempts
+    else:
+        return 0

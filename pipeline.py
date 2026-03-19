@@ -21,7 +21,7 @@ class State(TypedDict):
         summaries: list[BaseMessage]
         structure: Dict[str, Any]
         success: list[Dict[str, Any]]
-        attempts: int
+        attempts_left: int
 
 class Pipeline():
     def __init__(self):
@@ -59,11 +59,18 @@ class Pipeline():
     ### ROUTERS ###
 
     def grading_router(self, state: State):
-        if state["attempts"] >= self.return_anyway_after:
+        if grade(output_path=self.output_path):
+            return "pass"
+
+        if state["attempts_left"] == 0:
+            more_retries = request_retry(num_attempts_left=self.return_anyway_after)
+            state["attempts_left"] = more_retries
+        
+        if state["attempts_left"] == 0:
             print("[WARNING]: Code is not guaranteed to be functional.")
             return "insufficient"
-        elif grade(output_path=self.output_path):
-            return "pass"
+        
+        state["attempts_left"] -= 1
         return "fail"
 
     def post_converse_router(self, state: State):
@@ -120,7 +127,8 @@ class Pipeline():
         results = self.validator.run()
         print(results)
 
-        state["attempts"] = 1 if not state["attempts"] else (state["attempts"] + 1)
+        if not state["attempts_left"]:
+            state["attempts_left"] = self.return_anyway_after
 
         return {"success": state.get("success", []) + [results]}
     
