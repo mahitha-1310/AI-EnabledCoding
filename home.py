@@ -103,7 +103,6 @@ if __name__ == '__main__':
 
     for path in [pipeline.input_path, pipeline.editor_path, pipeline.output_path]:
         os.makedirs(path, exist_ok=True)
-        clear_directory(path)
 
     st.title("HASAIM")
     st.subheader("High Assurance System AI Modernization")
