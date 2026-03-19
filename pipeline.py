@@ -27,8 +27,8 @@ class Pipeline():
     def __init__(self):
 
         # Model init
-        self.summarize_after = int(os.getenv("SUMMARIZE_AFTER")) # summarize when message count exceeds this
-        self.messages_to_keep = int(os.getenv("MESSAGES_TO_KEEP")) # how many recent messages to keep after summarizing
+        self.summarize_after = int(os.getenv("SUMMARIZE_AFTER"))
+        self.messages_to_keep = int(os.getenv("MESSAGES_TO_KEEP"))
         self.return_anyway_after = int(os.getenv("ATTEMPTS"))
 
         model_name = os.getenv("OPENAI_API_MODEL")
