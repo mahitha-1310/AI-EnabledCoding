@@ -42,6 +42,7 @@ class Pipeline():
         # Path init
         self.input_path = os.getenv("INPUT_PATH")
         self.editor_path = os.getenv("EDITOR_PATH")
+        self.test_path = os.getenv("TESTING_PATH")
         self.output_path = os.getenv("OUTPUT_PATH")
 
         self.system_message = read_path(SYSTEM_PROMPT)

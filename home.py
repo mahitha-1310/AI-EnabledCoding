@@ -81,9 +81,9 @@ def codebase_clear():
         else:
             st.warning("Directory doesn't exist")
 
-def file_uploader():
+def file_uploader(path: str, label: str):
     uploaded_files = st.file_uploader(
-        label="Upload Files",
+        label=label,
         accept_multiple_files=True
     )
     for uploaded_file in uploaded_files:
@@ -91,7 +91,7 @@ def file_uploader():
         bytes_data = uploaded_file.read()
         
         # Save the file to pipeline.input_path
-        file_path = os.path.join(pipeline.input_path, uploaded_file.name)
+        file_path = os.path.join(path, uploaded_file.name)
         with open(file_path, "wb") as f:
             f.write(bytes_data)
 
@@ -109,10 +109,12 @@ if __name__ == '__main__':
 
     chatbox()
 
-    cl, cr = st.columns([3, 1])
+    cl, cm, cr = st.tabs(["Workspace", "Testing", "Files"])
 
     with cl:
-        file_uploader()
+        file_uploader(pipeline.input_path, "Upload C Files")
+    with cm:
+        file_uploader(pipeline.test_path, "Upload Unit Tests")
     with cr:
         codebase_download()
         codebase_clear()
