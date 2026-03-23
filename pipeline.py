@@ -203,14 +203,14 @@ class Pipeline():
 
         return graph_builder.compile(checkpointer=checkpointer)
 
-def run(pipeline: Pipeline, user_input: str, user_id: str):
+    def run(self, user_input: str, user_id: str):
 
-    if not pipeline.graph:
-        pipeline.build(MemorySaver())
+        if not self.graph:
+            self.build(MemorySaver())
 
-    response = pipeline.graph.invoke(
-        {"messages": [HumanMessage(content=user_input)]},
-        {"configurable": {"thread_id": user_id}}
-    )
+        response = self.graph.invoke(
+            {"messages": [HumanMessage(content=user_input)]},
+            {"configurable": {"thread_id": user_id}}
+        )
 
-    return response['messages'][-1].content
+        return response['messages'][-1].content

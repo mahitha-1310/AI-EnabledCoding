@@ -1,5 +1,5 @@
 import streamlit as st
-from pipeline import Pipeline, run
+from pipeline import Pipeline
 from utils import *
 from dotenv import load_dotenv
 import time
@@ -28,7 +28,7 @@ def chatbot():
         
         # Produce response
         with st.chat_message('assistant'):
-            response = run(
+            response = pipeline.run(
                 pipeline=pipeline,
                 user_input=prompt,
                 user_id=user_id
