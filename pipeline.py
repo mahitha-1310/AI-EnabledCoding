@@ -30,12 +30,13 @@ class Pipeline():
         self.summarize_after = int(os.getenv("SUMMARIZE_AFTER"))
         self.messages_to_keep = int(os.getenv("MESSAGES_TO_KEEP"))
         self.return_anyway_after = int(os.getenv("ATTEMPTS"))
+        self.retry_prompt = True
 
-        model_name = os.getenv("OPENAI_API_MODEL")
+        self._model_name = os.getenv("OPENAI_API_MODEL")
         model_temperature = float(os.getenv("TEMPERATURE"))
         model_tools = list(TOOLS.values())
         self.model = ChatOpenAI(
-            model=model_name, 
+            model=self._model_name, 
             temperature=model_temperature
         ).bind_tools(model_tools)
 
@@ -56,6 +57,9 @@ class Pipeline():
         # Pipeline init
         self.graph = self.build(MemorySaver())
         print(self.graph.get_graph().draw_ascii())
+    
+    def get_model_name(self):
+        return self._model_name
 
     ### ROUTERS ###
 
