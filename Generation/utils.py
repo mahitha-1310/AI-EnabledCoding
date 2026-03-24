@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Any, Dict
-from graders import ANALYSIS
+from Generation.graders import ANALYSIS
 import streamlit as st
 import shutil
 import uuid

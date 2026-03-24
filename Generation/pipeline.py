@@ -8,8 +8,8 @@ from Validation.validation_pipeline import ValidationPipeline
 from langgraph.graph.message import add_messages
 from typing import Annotated
 
-from tools import *
-from utils import *
+from Generation.tools import *
+from Generation.utils import *
 
 SYSTEM_PROMPT = os.path.join("prompt", "system_prompt.md")
 FEEDBACK_PROMPT = os.path.join("prompt", "feedback_prompt.md")
@@ -129,11 +129,13 @@ class Pipeline():
         return {"structure": project_structure, "messages": trimmed + [SystemMessage(content=tool_message)]}
 
     def validate_node(self, state: State):
+        if not state["attempts_left"]:
+            state["attempts_left"] = self.return_anyway_after
+
         results = self.validator.run()
         print(results)
 
-        if not state["attempts_left"]:
-            state["attempts_left"] = self.return_anyway_after
+        
 
         return {"success": state.get("success", []) + [results]}
     

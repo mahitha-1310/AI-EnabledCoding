@@ -2,7 +2,7 @@ import base64
 import shutil
 from langchain_core.tools import tool
 from typing import Dict, Any
-from utils import *
+from Generation.utils import *
 
 @tool
 def read(path: str, encoding: str = "utf-8") -> Dict[str, Any]:

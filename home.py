@@ -1,6 +1,6 @@
 import streamlit as st
-from pipeline import Pipeline
-from utils import *
+from Generation.pipeline import Pipeline
+from Generation.utils import *
 from dotenv import load_dotenv
 import time
 import os
