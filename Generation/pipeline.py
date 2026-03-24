@@ -5,6 +5,8 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_openai import ChatOpenAI
 from Validation.validation_pipeline import ValidationPipeline
+from Validation.compilation_stage import CompilationStage
+from Validation.dynamic_analysis_stage import DynamicAnalysisStage
 from langgraph.graph.message import add_messages
 from typing import Annotated
 
@@ -42,8 +44,9 @@ class Pipeline():
 
         # Path init
         self.input_path = os.getenv("INPUT_PATH")
+        self.test_path = os.getenv("TEST_PATH")
         self.editor_path = os.getenv("EDITOR_PATH")
-        self.test_path = os.getenv("TESTING_PATH")
+        self.testing_path = os.getenv("TESTING_PATH")
         self.output_path = os.getenv("OUTPUT_PATH")
 
         self.system_message = read_path(SYSTEM_PROMPT)
@@ -52,8 +55,10 @@ class Pipeline():
         self.summarization_message = read_path(SUMMARIZATION_PROMPT)
 
         # Validation init
-        self.validator = ValidationPipeline(output_dir=self.output_path, source_dir=self.editor_path)
-
+        self.validator = ValidationPipeline(output_dir=self.testing_path, source_dir=self.editor_path)
+        # Unit Testing init
+        self.test_compiler = CompilationStage(output_dir=self.testing_path, project_root=self.test_path)
+        self.test_executer = DynamicAnalysisStage(output_dir=self.output_path)
         # Pipeline init
         self.graph = self.build(MemorySaver())
         print(self.graph.get_graph().draw_ascii())
@@ -67,11 +72,11 @@ class Pipeline():
         if grade(output_path=self.output_path):
             return "pass"
 
-        if state["attempts_left"] == 0:
+        if self.retry_prompt and state["attempts_left"] == 0:
             more_retries = request_retry(num_attempts_left=self.return_anyway_after)
             state["attempts_left"] = more_retries
         
-        if state["attempts_left"] == 0:
+        if not self.retry_prompt or state["attempts_left"] == 0:
             print("[WARNING]: Code is not guaranteed to be functional.")
             return "insufficient"
         
@@ -132,10 +137,23 @@ class Pipeline():
         if not state["attempts_left"]:
             state["attempts_left"] = self.return_anyway_after
 
+        # Validate program
         results = self.validator.run()
         print(results)
 
-        
+        # Get unit test paths
+        paths = list_dir(self.test_path)
+
+        # Compile tests
+        compile_res = self.test_compiler.run_manual_compile(
+            source_files=paths
+        )
+        print(compile_res)
+
+        # Run tests
+        for path in paths:
+            run_res = self.test_executer.run(path)
+            print(f"{path}: {run_res}")
 
         return {"success": state.get("success", []) + [results]}
     
