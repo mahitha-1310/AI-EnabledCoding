@@ -22,7 +22,7 @@ class State(TypedDict):
         messages: Annotated[list[BaseMessage], add_messages]
         summaries: list[BaseMessage]
         structure: Dict[str, Any]
-        success: list[Dict[str, Any]]
+        validation: list[Dict[str, Any]]
         attempts_left: int
 
 class Pipeline():
@@ -48,6 +48,7 @@ class Pipeline():
         self.editor_path = os.getenv("EDITOR_PATH")
         self.testing_path = os.getenv("TESTING_PATH")
         self.output_path = os.getenv("OUTPUT_PATH")
+        self.result_path = os.getenv("RESULT_PATH")
 
         self.system_message = read_path(SYSTEM_PROMPT)
         self.feedback_message = read_path(FEEDBACK_PROMPT)
@@ -71,6 +72,8 @@ class Pipeline():
     def grading_router(self, state: State):
         if grade(output_path=self.output_path):
             return "pass"
+        
+        # TODO: Detemrine how unit test successes/errors/crashes are handled!
 
         if self.retry_prompt and state["attempts_left"] == 0:
             more_retries = request_retry(num_attempts_left=self.return_anyway_after)
@@ -134,28 +137,43 @@ class Pipeline():
         return {"structure": project_structure, "messages": trimmed + [SystemMessage(content=tool_message)]}
 
     def validate_node(self, state: State):
+
         if not state["attempts_left"]:
             state["attempts_left"] = self.return_anyway_after
 
-        # Validate program
-        results = self.validator.run()
-        print(results)
+        # checklist = {"validated": False, "tests_usable": False, "all_tests_passed": False}
+        validation_report = {"validator": None, "test_compiler": None, "test_results": None}
+
+        # Validate program (compile, static, dynamic, formatting)
+        validate_results = self.validator.run()
+        validation_report["validator"] = validate_results
+        print(validate_results)
 
         # Get unit test paths
-        paths = list_dir(self.test_path)
+        ut_paths = list_dir(self.test_path)
 
         # Compile tests
-        compile_res = self.test_compiler.run_manual_compile(
-            source_files=paths
+        compile_results = self.test_compiler.run_manual_compile(
+            source_files=ut_paths
         )
-        print(compile_res)
+        validation_report["test_compiler"] = compile_results
+        print(compile_results)
 
         # Run tests
-        for path in paths:
-            run_res = self.test_executer.run(path)
-            print(f"{path}: {run_res}")
+        run_results = {}
+        for path in ut_paths:
+            res = self.test_executer.run(path)
+            run_results[path] = res
+            print(f"{path}: {res}")
+        validation_report["test_results"] = run_results
 
-        return {"success": state.get("success", []) + [results]}
+        for report_type in validation_report:
+            path = '_'.join(report_type, str((self.return_anyway_after-state["attempts_left"]))) + ".json"
+            path = os.path.join(self.result_path, "validation", path)
+            with open(path, "w") as f:
+                json.dump(validation_report[report_type], f, indent=4)
+
+        return {"validation": state.get("validation", []) + [validation_report]}
     
     def summarize_node(self, state: State):
         messages = state["messages"]
