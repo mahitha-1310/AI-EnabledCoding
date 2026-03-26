@@ -70,7 +70,7 @@ def codebase_clear():
     text = "Nothing to Clear" if disable else "Clear Codebase"
     if st.button(text, disabled=disable, use_container_width=True):
         try:
-            clear_directory(PATH.testing_path_path)
+            clear_directory(PATH.testing_path)
             clear_directory(PATH.editor_path)
             clear_directory(PATH.result_path)
             clear_directory(PATH.output_path)
@@ -117,8 +117,8 @@ def file_uploader(path: str, label: str):
         with open(file_path, "wb") as f:
             f.write(bytes_data)
 
-if __name__ == '__main__':
-    
+def run():
+
     pipeline = get_pipeline()
     user_id = generate_user_id()
 

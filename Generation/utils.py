@@ -43,21 +43,26 @@ def project_path(path: str) -> Path:
         return p
     return Path(__file__).parent / p
 
-class PathCollection:
+class _PathData:
     def __init__(self):
+        # Paths
+        self.summary_path = os.path.join("logs", "summary.json")
+        self.workshop_path = "workshop"
+        self.prompts_path = "prompts"
 
-        self.input_path = self.make_dir("INPUT_PATH")
-        self.test_path = self.make_dir("TEST_PATH")
-        self.editor_path = self.make_dir("EDITOR_PATH")
-        self.testing_path = self.make_dir("TESTING_PATH")
-        self.output_path = self.make_dir("OUTPUT_PATH")
-        self.result_path = self.make_dir("RESULT_PATH")
+        self.input_path =   os.path.join(self.workshop_path, "input")
+        self.test_path =    os.path.join(self.workshop_path, "test")  
+        self.editor_path =  os.path.join(self.workshop_path, "editor")
+        self.testing_path = os.path.join(self.workshop_path, "testing")
+        self.output_path =  os.path.join(self.workshop_path, "output")
+        self.result_path =  os.path.join(self.workshop_path, "result")
 
-        SYSTEM_PROMPT = os.path.join("..", "prompt", "system_prompt.md")
-        FEEDBACK_PROMPT = os.path.join("..", "prompt", "feedback_prompt.md")
-        STRUCTURE_PROMPT = os.path.join("..", "prompt", "structure_prompt.md")
-        SUMMARIZATION_PROMPT = os.path.join("..", "prompt", "summarization_prompt.md")
+        SYSTEM_PROMPT =        os.path.join(self.prompts_path, "system_prompt.md")
+        FEEDBACK_PROMPT =      os.path.join(self.prompts_path, "feedback_prompt.md")
+        STRUCTURE_PROMPT =     os.path.join(self.prompts_path, "structure_prompt.md")
+        SUMMARIZATION_PROMPT = os.path.join(self.prompts_path, "summarization_prompt.md")
 
+        # Prompts
         self.system_message = read_path(SYSTEM_PROMPT)
         self.feedback_message = read_path(FEEDBACK_PROMPT)
         self.structure_message = read_path(STRUCTURE_PROMPT)
@@ -70,8 +75,7 @@ class PathCollection:
         os.makedirs(path, exist_ok=True)
         return path
 
-PATH = PathCollection()
-SUMMARY_PATH = os.path.join("logs", "summary.json")
+PATH = _PathData()
 
 def get_path(path: str) -> Path:
     """Resolve a path relative to the EDITOR_PATH environment variable.
@@ -203,7 +207,7 @@ def grade(output_path: Path) -> bool:
 
     try:
         for stage, functions in ANALYSIS.items():
-            path = output_path / stage / SUMMARY_PATH
+            path = output_path / stage / PATH.summary_path
             with open(path, "r", encoding="utf-8") as file:
                 success = functions["function"].invoke(json.load(file))
                 if not success:
