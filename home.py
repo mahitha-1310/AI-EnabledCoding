@@ -1,7 +1,6 @@
 import streamlit as st
 from Generation.pipeline import Pipeline
 from Generation.utils import *
-from dotenv import load_dotenv
 import time
 import os
 
@@ -23,8 +22,8 @@ def chatbot():
         st.chat_message('user').markdown(prompt)
         st.session_state.messages.append({'role': 'user', 'content': prompt})
 
-        clear_directories([pipeline.editor_path, pipeline.output_path])
-        transfer(source=pipeline.input_path, destination=pipeline.editor_path)
+        clear_directories([PATH.editor_path, PATH.output_path])
+        transfer(source=PATH.input_path, destination=PATH.editor_path)
         
         # Produce response
         with st.chat_message('assistant'):
@@ -35,8 +34,8 @@ def chatbot():
             )
             st.write_stream(stream=stream(response=response, delay=0.01))
         
-        clear_directory(pipeline.input_path)
-        transfer(source=pipeline.editor_path, destination=pipeline.output_path)
+        clear_directory(PATH.input_path)
+        transfer(source=PATH.editor_path, destination=PATH.output_path)
 
         st.session_state.messages.append({'role': 'assistant', 'content': response})
         st.rerun()
@@ -50,15 +49,15 @@ def chatbox():
         chatbot()
 
 def codebase_download():
-    disable = not os.listdir(pipeline.output_path)
+    disable = not os.listdir(PATH.output_path)
     text = "Nothing to Download" if disable else "Download Codebase"
     if st.button(text, disabled=disable, use_container_width=True):
         try:
-            zip_data = create_zip(pipeline.output_path)
+            zip_data = create_zip(PATH.output_path)
             st.download_button(
                 label="Click to Download ZIP",
                 data=zip_data,
-                file_name=f"{os.path.basename(pipeline.output_path)}.zip",
+                file_name=f"{os.path.basename(PATH.output_path)}.zip",
                 mime="application/zip",
                 use_container_width=True
             )
@@ -67,13 +66,14 @@ def codebase_download():
             st.error(f"Error creating zip: {str(e)}")
 
 def codebase_clear():
-    disable = not os.listdir(pipeline.editor_path) and not os.listdir(pipeline.input_path)
+    disable = not os.listdir(PATH.editor_path) and not os.listdir(PATH.input_path)
     text = "Nothing to Clear" if disable else "Clear Codebase"
     if st.button(text, disabled=disable, use_container_width=True):
         try:
-            clear_directory(pipeline.editor_path)
-            clear_directory(pipeline.input_path)
-            clear_directory(pipeline.output_path)
+            clear_directory(PATH.testing_path_path)
+            clear_directory(PATH.editor_path)
+            clear_directory(PATH.result_path)
+            clear_directory(PATH.output_path)
             st.success("Directory cleared successfully!")
             st.rerun()
         except Exception as e:
@@ -118,13 +118,9 @@ def file_uploader(path: str, label: str):
             f.write(bytes_data)
 
 if __name__ == '__main__':
-    load_dotenv()
     
     pipeline = get_pipeline()
     user_id = generate_user_id()
-
-    for path in [pipeline.input_path, pipeline.editor_path, pipeline.output_path]:
-        os.makedirs(path, exist_ok=True)
 
     st.title("HASAIM")
     st.subheader("High Assurance System AI Modernization")
@@ -134,9 +130,9 @@ if __name__ == '__main__':
         cl, cm, cr = st.tabs(["Workspace", "Testing", "Files"])
 
         with cl:
-            file_uploader(pipeline.input_path, "Upload C Files")
+            file_uploader(PATH.input_path, "Upload C Files")
         with cm:
-            file_uploader(pipeline.test_path, "Upload Unit Tests")
+            file_uploader(PATH.test_path, "Upload Unit Tests")
         with cr:
             codebase_download()
             codebase_clear()

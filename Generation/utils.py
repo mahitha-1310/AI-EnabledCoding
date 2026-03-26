@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Any, Dict
 from Generation.graders import ANALYSIS
+from dotenv import load_dotenv
 import streamlit as st
 import shutil
 import uuid
@@ -8,8 +9,6 @@ import zipfile
 import io
 import json
 import os
-
-SUMMARY_PATH = os.path.join("logs", "summary.json")
 
 def assert_exists(path: Path) -> None:
     if not path.exists():
@@ -24,28 +23,6 @@ def assert_file(path: Path) -> None:
     assert_exists(path)
     if not path.is_file():
         raise ValueError(f"Path is not a file: {path}")
-
-def get_path(path: str) -> Path:
-    """Resolve a path relative to the EDITOR_PATH environment variable.
-
-    If the path is already absolute, return it directly without prepending
-    EDITOR_PATH — handles cases where INPUT_PATH / OUTPUT_PATH are full paths.
-    """
-    requested_path = Path(path)
-
-    if requested_path.is_absolute():
-        return requested_path
-
-    tail = os.getenv("EDITOR_PATH")
-    if tail is None:
-        raise ValueError("`EDITOR_PATH` is not set. Please provide a valid directory path.")
-
-    base_path = Path(tail)
-
-    if requested_path.parts and requested_path.parts[0] == base_path.name:
-        requested_path = Path(*requested_path.parts[1:])
-
-    return base_path / requested_path
 
 def read_path(file_path: str) -> str:
     """Read and return the text content of a file, resolved relative to the project root."""
@@ -66,6 +43,57 @@ def project_path(path: str) -> Path:
         return p
     return Path(__file__).parent / p
 
+class PathCollection:
+    def __init__(self):
+
+        self.input_path = self.make_dir("INPUT_PATH")
+        self.test_path = self.make_dir("TEST_PATH")
+        self.editor_path = self.make_dir("EDITOR_PATH")
+        self.testing_path = self.make_dir("TESTING_PATH")
+        self.output_path = self.make_dir("OUTPUT_PATH")
+        self.result_path = self.make_dir("RESULT_PATH")
+
+        SYSTEM_PROMPT = os.path.join("..", "prompt", "system_prompt.md")
+        FEEDBACK_PROMPT = os.path.join("..", "prompt", "feedback_prompt.md")
+        STRUCTURE_PROMPT = os.path.join("..", "prompt", "structure_prompt.md")
+        SUMMARIZATION_PROMPT = os.path.join("..", "prompt", "summarization_prompt.md")
+
+        self.system_message = read_path(SYSTEM_PROMPT)
+        self.feedback_message = read_path(FEEDBACK_PROMPT)
+        self.structure_message = read_path(STRUCTURE_PROMPT)
+        self.summarization_message = read_path(SUMMARIZATION_PROMPT)
+    
+    def make_dir(self, envvar: str):
+        if not os.getenv(envvar):
+            load_dotenv()
+        path = os.getenv(envvar)
+        os.makedirs(path, exist_ok=True)
+        return path
+
+PATH = PathCollection()
+SUMMARY_PATH = os.path.join("logs", "summary.json")
+
+def get_path(path: str) -> Path:
+    """Resolve a path relative to the EDITOR_PATH environment variable.
+
+    If the path is already absolute, return it directly without prepending
+    EDITOR_PATH — handles cases where INPUT_PATH / OUTPUT_PATH are full paths.
+    """
+    requested_path = Path(path)
+
+    if requested_path.is_absolute():
+        return requested_path
+
+    tail = PATH.editor_path
+    if tail is None:
+        raise ValueError("`EDITOR_PATH` is not set. Please provide a valid directory path.")
+
+    base_path = Path(tail)
+
+    if requested_path.parts and requested_path.parts[0] == base_path.name:
+        requested_path = Path(*requested_path.parts[1:])
+
+    return base_path / requested_path
 
 def transfer(source: str, destination: str) -> None:
     """

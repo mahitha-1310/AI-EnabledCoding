@@ -13,11 +13,6 @@ from typing import Annotated
 from Generation.tools import *
 from Generation.utils import *
 
-SYSTEM_PROMPT = os.path.join("prompt", "system_prompt.md")
-FEEDBACK_PROMPT = os.path.join("prompt", "feedback_prompt.md")
-STRUCTURE_PROMPT = os.path.join("prompt", "structure_prompt.md")
-SUMMARIZATION_PROMPT = os.path.join("prompt", "summarization_prompt.md")
-
 class State(TypedDict):
         messages: Annotated[list[BaseMessage], add_messages]
         summaries: list[BaseMessage]
@@ -42,24 +37,11 @@ class Pipeline():
             temperature=model_temperature
         ).bind_tools(model_tools)
 
-        # Path init
-        self.input_path = os.getenv("INPUT_PATH")
-        self.test_path = os.getenv("TEST_PATH")
-        self.editor_path = os.getenv("EDITOR_PATH")
-        self.testing_path = os.getenv("TESTING_PATH")
-        self.output_path = os.getenv("OUTPUT_PATH")
-        self.result_path = os.getenv("RESULT_PATH")
-
-        self.system_message = read_path(SYSTEM_PROMPT)
-        self.feedback_message = read_path(FEEDBACK_PROMPT)
-        self.structure_message = read_path(STRUCTURE_PROMPT)
-        self.summarization_message = read_path(SUMMARIZATION_PROMPT)
-
         # Validation init
-        self.validator = ValidationPipeline(output_dir=self.testing_path, source_dir=self.editor_path)
+        self.validator = ValidationPipeline(output_dir=PATH.testing_path, source_dir=PATH.editor_path)
         # Unit Testing init
-        self.test_compiler = CompilationStage(output_dir=self.testing_path, project_root=self.test_path)
-        self.test_executer = DynamicAnalysisStage(output_dir=self.output_path)
+        self.test_compiler = CompilationStage(output_dir=PATH.testing_path, project_root=PATH.test_path)
+        self.test_executer = DynamicAnalysisStage(output_dir=PATH.output_path)
         # Pipeline init
         self.graph = self.build(MemorySaver())
         print(self.graph.get_graph().draw_ascii())
@@ -70,7 +52,7 @@ class Pipeline():
     ### ROUTERS ###
 
     def grading_router(self, state: State):
-        if grade(output_path=self.output_path):
+        if grade(output_path=PATH.output_path):
             return "pass"
         
         # TODO: Detemrine how unit test successes/errors/crashes are handled!
@@ -126,9 +108,9 @@ class Pipeline():
         return {"messages": tool_messages}
 
     def update_node(self, state: State):
-        project_structure = list_dir(self.editor_path)
+        project_structure = list_dir(PATH.editor_path)
         tool_message = str.format(
-            self.structure_message,
+            PATH.structure_message,
             directory_tree=json.dumps(project_structure["structure"], indent=4)
         )
 
@@ -150,7 +132,7 @@ class Pipeline():
         print(validate_results)
 
         # Get unit test paths
-        ut_paths = list_dir(self.test_path)
+        ut_paths = list_dir(PATH.test_path)
 
         # Compile tests
         compile_results = self.test_compiler.run_manual_compile(
@@ -169,7 +151,7 @@ class Pipeline():
 
         for report_type in validation_report:
             path = '_'.join(report_type, str((self.return_anyway_after-state["attempts_left"]))) + ".json"
-            path = os.path.join(self.result_path, "validation", path)
+            path = os.path.join(PATH.result_path, "validation", path)
             with open(path, "w") as f:
                 json.dump(validation_report[report_type], f, indent=4)
 
@@ -187,7 +169,7 @@ class Pipeline():
             if msg.content and not isinstance(msg, SystemMessage)
         )
 
-        summary = self.model.invoke([HumanMessage(content=self.summarization_message.format(history=history))])
+        summary = self.model.invoke([HumanMessage(content=PATH.summarization_message.format(history=history))])
 
         summary_message = SystemMessage(
             content=f"[Conversation summary so far]: {summary.content}"
@@ -200,13 +182,13 @@ class Pipeline():
         # TODO: Obtain relevant validation logs/jsons!
         summary_json = json.dumps(state.get("success", [{}])[-1])
 
-        response = self.model.invoke([HumanMessage(content=self.feedback_message.format(summary=summary_json))])
+        response = self.model.invoke([HumanMessage(content=PATH.feedback_message.format(summary=summary_json))])
 
         return {"messages": [SystemMessage(content=response.content)]}
 
     def converse_node(self, state: State):
         history = state.get("summarized_messages") or state["messages"]
-        response = self.model.invoke([SystemMessage(content=self.system_message)] + history)
+        response = self.model.invoke([SystemMessage(content=PATH.system_message)] + history)
         return {"messages": [response]}
 
     #############
