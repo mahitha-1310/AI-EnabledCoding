@@ -116,15 +116,13 @@ class Pipeline():
         return {"structure": project_structure, "messages": trimmed + [SystemMessage(content=tool_message)]}
 
     def validate_node(self, state: State):
-
         if state.get("attempts_left") is None:
             state["attempts_left"] = self.return_anyway_after
 
-        # Validate program (compile, static, dynamic, formatting)
         results = self.validator.run()
         print(results)
 
-        return {"validations": state.get("validations", []) + results}
+        return {"validations": state.get("validations", []) + [results]}
     
     def summarize_node(self, state: State):
         messages = state["messages"]
