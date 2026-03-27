@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Any, Dict
-from Generation.graders import ANALYSIS
+from graders import ANALYSIS
 from dotenv import load_dotenv
 import streamlit as st
 import shutil

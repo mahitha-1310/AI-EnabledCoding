@@ -1,6 +1,6 @@
 import streamlit as st
-from Generation.pipeline import Pipeline
-from Generation.utils import *
+from generation_pipeline import Pipeline
+from utils import *
 import time
 import os
 
@@ -16,37 +16,33 @@ def stream(response, delay: float):
         time.sleep(delay)
 
 def chatbot():
-    prompt = st.chat_input(CHATBOT_MESSAGE)
-    if prompt and (not prompt.strip() == ""):
-        # Add prompt to chat
-        st.chat_message('user').markdown(prompt)
-        st.session_state.messages.append({'role': 'user', 'content': prompt})
-
-        clear_directories([PATH.editor_path, PATH.output_path])
-        transfer(source=PATH.input_path, destination=PATH.editor_path)
-        
-        # Produce response
-        with st.chat_message('assistant'):
-            response = pipeline.run(
-                pipeline=pipeline,
-                user_input=prompt,
-                user_id=user_id
-            )
-            st.write_stream(stream=stream(response=response, delay=0.01))
-        
-        clear_directory(PATH.input_path)
-        transfer(source=PATH.editor_path, destination=PATH.output_path)
-
-        st.session_state.messages.append({'role': 'assistant', 'content': response})
-        st.rerun()
-
-def chatbox():
     if 'messages' not in st.session_state:
         st.session_state.messages = []
     with st.container(height=450):
         for message in st.session_state.messages:
             st.chat_message(message['role']).markdown(message['content'])
-        chatbot()
+        prompt = st.chat_input(CHATBOT_MESSAGE)
+        if prompt and not prompt == "":
+            # Add prompt to chat
+            st.chat_message('user').markdown(prompt)
+            st.session_state.messages.append({'role': 'user', 'content': prompt})
+
+            clear_directories([PATH.editor_path, PATH.output_path])
+            transfer(source=PATH.input_path, destination=PATH.editor_path)
+            
+            # Produce response
+            with st.chat_message('assistant'):
+                response = pipeline.run(
+                    user_input=prompt,
+                    user_id=user_id
+                )
+                st.write_stream(stream=stream(response=response, delay=0.01))
+            
+            clear_directory(PATH.input_path)
+            transfer(source=PATH.editor_path, destination=PATH.output_path)
+
+            st.session_state.messages.append({'role': 'assistant', 'content': response})
+            st.rerun()
 
 def codebase_download():
     disable = not os.listdir(PATH.output_path)
@@ -70,16 +66,13 @@ def codebase_clear():
     text = "Nothing to Clear" if disable else "Clear Codebase"
     if st.button(text, disabled=disable, use_container_width=True):
         try:
-            clear_directory(PATH.testing_path)
-            clear_directory(PATH.editor_path)
-            clear_directory(PATH.result_path)
-            clear_directory(PATH.output_path)
+            clear_directory(PATH.workshop_path)
             st.success("Directory cleared successfully!")
             st.rerun()
         except Exception as e:
             st.error(f"Error clearing directory: {str(e)}")
 
-def pipeline_customize():
+def pipeline_customize(pipeline: Pipeline):
     if st.button("Model Settings...", use_container_width=True):
         customize_pipeline(pipeline=pipeline)
 
@@ -117,7 +110,7 @@ def file_uploader(path: str, label: str):
         with open(file_path, "wb") as f:
             f.write(bytes_data)
 
-def run():
+if __name__ == "__main__":
 
     pipeline = get_pipeline()
     user_id = generate_user_id()
@@ -136,6 +129,6 @@ def run():
         with cr:
             codebase_download()
             codebase_clear()
-            pipeline_customize()
+            pipeline_customize(pipeline=pipeline)
     with edit_col:
-        chatbox()
+        chatbot()

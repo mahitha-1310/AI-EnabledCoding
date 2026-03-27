@@ -10,8 +10,8 @@ from Validation.dynamic_analysis_stage import DynamicAnalysisStage
 from langgraph.graph.message import add_messages
 from typing import Annotated
 
-from Generation.tools import *
-from Generation.utils import *
+from tools import *
+from utils import *
 
 class State(TypedDict):
         messages: Annotated[list[BaseMessage], add_messages]
@@ -120,7 +120,7 @@ class Pipeline():
 
     def validate_node(self, state: State):
 
-        if not state["attempts_left"]:
+        if not state.get("attempts_left"):
             state["attempts_left"] = self.return_anyway_after
 
         # checklist = {"validated": False, "tests_usable": False, "all_tests_passed": False}
