@@ -39,9 +39,6 @@ class Pipeline():
 
         # Validation init
         self.validator = ValidationPipeline(output_dir=PATH.testing_path, source_dir=PATH.editor_path)
-        # Unit Testing init
-        self.test_compiler = CompilationStage(output_dir=PATH.testing_path, project_root=PATH.test_path)
-        self.test_executer = DynamicAnalysisStage(output_dir=PATH.output_path)
         # Pipeline init
         self.graph = self.build(MemorySaver())
         print(self.graph.get_graph().draw_ascii())
@@ -120,7 +117,7 @@ class Pipeline():
 
     def validate_node(self, state: State):
 
-        if not state.get("attempts_left"):
+        if state.get("attempts_left") is None:
             state["attempts_left"] = self.return_anyway_after
 
         # Validate program (compile, static, dynamic, formatting)
