@@ -38,7 +38,7 @@ class Pipeline():
         ).bind_tools(model_tools)
 
         # Validation init
-        self.validator = ValidationPipeline(output_dir=PATH.testing_path, source_dir=PATH.editor_path)
+        self.validator = ValidationPipeline(output_dir=PATH.output_path, source_dir=PATH.editor_path)
         # Pipeline init
         self.graph = self.build(MemorySaver())
         print(self.graph.get_graph().draw_ascii())
