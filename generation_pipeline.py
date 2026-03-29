@@ -49,7 +49,7 @@ class Pipeline():
     ### ROUTERS ###
 
     def grading_router(self, state: State):
-        if grade(output_path=PATH.output_path):
+        if state["validations"][-1]["success"]:
             return "pass"
         
         # TODO: Detemrine how unit test successes/errors/crashes are handled!
