@@ -67,6 +67,17 @@ class _PathData:
         self.feedback_message = read_path(FEEDBACK_PROMPT)
         self.structure_message = read_path(STRUCTURE_PROMPT)
         self.summarization_message = read_path(SUMMARIZATION_PROMPT)
+
+        # Ensure all workshop directories exist at startup
+        for path in [
+            self.input_path,
+            self.test_path,
+            self.editor_path,
+            self.testing_path,
+            self.output_path,
+            self.result_path,
+        ]:
+            os.makedirs(path, exist_ok=True)
     
     def make_dir(self, envvar: str):
         if not os.getenv(envvar):
