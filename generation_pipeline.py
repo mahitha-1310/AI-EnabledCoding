@@ -24,10 +24,12 @@ class Pipeline():
     def __init__(self):
 
         # Model init
-        self.summarize_after = int(os.getenv("SUMMARIZE_AFTER"))
-        self.messages_to_keep = int(os.getenv("MESSAGES_TO_KEEP"))
-        self.return_anyway_after = int(os.getenv("ATTEMPTS"))
-        self.retry_prompt = True
+        self.config = {
+            "summarize_after": 20,
+            "messages_to_keep": 10,
+            "return_anyway_after": 3,
+            "retry_prompt": True
+        }
 
         self._model_name = os.getenv("OPENAI_API_MODEL")
         model_temperature = float(os.getenv("TEMPERATURE"))
@@ -45,6 +47,14 @@ class Pipeline():
     
     def get_model_name(self):
         return self._model_name
+    
+    def configure(self, **kwargs) -> None:
+        if len(kwargs) % 2 == 1 or len(kwargs) == 0:
+            raise ValueError(f"Parameter kwargs must have a nonzero and even length, not {len(kwargs)}")
+        for key, value in kwargs.items():
+            if not isinstance(key, str):
+                raise TypeError("Config parameter must be a string")
+            self.config[key] = value
 
     ### ROUTERS ###
 
@@ -54,11 +64,11 @@ class Pipeline():
         
         # TODO: Detemrine how unit test successes/errors/crashes are handled!
 
-        if self.retry_prompt and state["attempts_left"] == 0:
-            more_retries = request_retry(num_attempts_left=self.return_anyway_after)
+        if self.config["retry_prompt"] and state["attempts_left"] == 0:
+            more_retries = request_retry(num_attempts_left=self.config["return_anyway_after"])
             state["attempts_left"] = more_retries
         
-        if not self.retry_prompt or state["attempts_left"] == 0:
+        if not self.config["retry_prompt"] or state["attempts_left"] == 0:
             print("[WARNING]: Code is not guaranteed to be functional.")
             return "insufficient"
         
@@ -72,7 +82,7 @@ class Pipeline():
         return "validate"
     
     def summarization_router(self, state: State):
-        return "summarize" if len(state["messages"]) > self.summarize_after else "converse"
+        return "summarize" if len(state["messages"]) > self.config["summarize_after"] else "converse"
 
 
     ###############
@@ -111,13 +121,13 @@ class Pipeline():
             directory_tree=json.dumps(project_structure["structure"], indent=4)
         )
 
-        trimmed = state["messages"][-self.summarize_after:]
+        trimmed = state["messages"][-self.config["summarize_after"]:]
 
         return {"structure": project_structure, "messages": trimmed + [SystemMessage(content=tool_message)]}
 
     def validate_node(self, state: State):
         if state.get("attempts_left") is None:
-            state["attempts_left"] = self.return_anyway_after
+            state["attempts_left"] = self.config["return_anyway_after"]
 
         results = self.validator.run()
         print(results)
@@ -127,8 +137,8 @@ class Pipeline():
     def summarize_node(self, state: State):
         messages = state["messages"]
 
-        summarize = messages[:-self.messages_to_keep]
-        preserve  = messages[-self.messages_to_keep:]
+        summarize = messages[:-self.config["messages_to_keep"]]
+        preserve  = messages[-self.config["messages_to_keep"]:]
 
         history = "\n".join(
             f"{msg.__class__.__name__}: {msg.content}"

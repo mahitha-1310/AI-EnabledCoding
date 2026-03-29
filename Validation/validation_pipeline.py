@@ -20,6 +20,14 @@ class ValidationPipeline:
         """
         self.output_dir = os.path.abspath(output_dir)
         self.source_dir = os.path.abspath(source_dir)
+        self.config = {
+            "compiler": "clang",
+            "build_tool": None,
+            "static_analyzer": "clang-tidy",
+            "flags": [],
+            "check_only": True,
+            "style": "LLVM"
+        }
 
         # Pipeline stages
         self.compilation = CompilationStage(
@@ -47,6 +55,14 @@ class ValidationPipeline:
         #     prompt_text=prompt
         # )
 
+    def configure(self, **kwargs) -> None:
+        if len(kwargs) % 2 == 1 or len(kwargs) == 0:
+            raise ValueError(f"Parameter kwargs must have a nonzero and even length, not {len(kwargs)}")
+        for key, value in kwargs.items():
+            if not isinstance(key, str):
+                raise TypeError("Config parameter must be a string")
+            self.config[key] = value
+
     def run(self) -> Dict[str, Dict[str, Any]]:
         """
         Run the pipeline
@@ -70,13 +86,15 @@ class ValidationPipeline:
             source_files=c_files,
             header_files=h_files,
             include_dirs=include_dirs,
-            build_tool=build_tool
+            compiler=self.config["compiler"],
+            build_tool=self.config["build_tool"]
         )
 
         # Stage 2: Static Analysis
         results["static_analysis"] = self.static_analysis.run(
             source_files=c_files,
-            compile_commands=f"{self.output_dir}/compilation/"
+            compile_commands=f"{self.output_dir}/compilation/",
+            static_analyzer=self.config["static_analyzer"]
             # ValidationTests/Test4/compilation/compile_commands.json
         )
 
@@ -90,13 +108,14 @@ class ValidationPipeline:
         else:
             results["dynamic_analysis"] = self.dynamic_analysis.run(
                 executable_path=exe_path,
-                flags=[]
+                flags=self.config["flags"]
             )
 
         # Stage 4: Formatting
         results["formatting"] = self.formatting_stage.run(
             source_files=c_files,
-            check_only=True
+            check_only=self.config["check_only"],
+            style=self.config["style"]
         )
 
         # Further steps to be implemented later...
