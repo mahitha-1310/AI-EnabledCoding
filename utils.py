@@ -46,27 +46,23 @@ def project_path(path: str) -> Path:
 class _PathData:
     def __init__(self):
         # Paths
+        def workshop(path: str): return os.path.join("workshop", path)
+        def prompts(path: str): return read_path(os.path.join("prompts", path))
+
         self.summary_path = os.path.join("logs", "summary.json")
-        self.workshop_path = "workshop"
-        self.prompts_path = "prompts"
 
-        self.input_path =   os.path.join(self.workshop_path, "input")
-        self.test_path =    os.path.join(self.workshop_path, "test")  
-        self.editor_path =  os.path.join(self.workshop_path, "editor")
-        self.testing_path = os.path.join(self.workshop_path, "testing")
-        self.output_path =  os.path.join(self.workshop_path, "output")
-        self.result_path =  os.path.join(self.workshop_path, "result")
-
-        SYSTEM_PROMPT =        os.path.join(self.prompts_path, "system_prompt.md")
-        FEEDBACK_PROMPT =      os.path.join(self.prompts_path, "feedback_prompt.md")
-        STRUCTURE_PROMPT =     os.path.join(self.prompts_path, "structure_prompt.md")
-        SUMMARIZATION_PROMPT = os.path.join(self.prompts_path, "summarization_prompt.md")
+        self.input_path =   workshop("input")
+        self.test_path =    workshop("test")  
+        self.editor_path =  workshop("editor")
+        self.testing_path = workshop("testing")
+        self.output_path =  workshop("output")
+        self.result_path =  workshop("result")
 
         # Prompts
-        self.system_message = read_path(SYSTEM_PROMPT)
-        self.feedback_message = read_path(FEEDBACK_PROMPT)
-        self.structure_message = read_path(STRUCTURE_PROMPT)
-        self.summarization_message = read_path(SUMMARIZATION_PROMPT)
+        self.system_message =        prompts("system_prompt.md")
+        self.feedback_message =      prompts("feedback_prompt.md")
+        self.structure_message =     prompts("structure_prompt.md")
+        self.summarization_message = prompts("summarization_prompt.md")
 
         # Ensure all workshop directories exist at startup
         for path in [
