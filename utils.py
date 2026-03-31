@@ -3,11 +3,12 @@ from typing import Any, Dict
 from graders import ANALYSIS
 from dotenv import load_dotenv
 import streamlit as st
-import shutil
-import uuid
 import zipfile
-import io
+import shutil
+import random
 import json
+import uuid
+import io
 import os
 
 def assert_exists(path: Path) -> None:
@@ -76,6 +77,20 @@ class _PathData:
         return path
 
 PATH = _PathData()
+
+class ElementIDManager():
+    def __init__(self, minimum, maximum):
+        self.element_ids = set()
+        self.min = minimum
+        self.max = maximum
+
+    def get(self) -> int:
+        length = len(self.element_ids)
+        while length == len(self.element_ids):
+            self.element_ids.add(random.randint(self.min, self.max))
+        return self.element_ids[-1]
+
+EID = ElementIDManager(1, 32767)
 
 def get_path(path: str) -> Path:
     """Resolve a path relative to the EDITOR_PATH environment variable.
