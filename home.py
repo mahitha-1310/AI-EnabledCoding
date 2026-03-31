@@ -111,6 +111,34 @@ def customize_pipeline(pipeline: Pipeline) -> None:
     def customize_validator():
         EID.discard()
 
+        # Chatbot variables
+        summarize_after     = pipeline.config.get("summarize_after")
+        messages_to_keep    = pipeline.config.get("messages_to_keep")
+        summarized          = summarize_after-messages_to_keep
+        return_anyway_after = pipeline.config.get("return_anyway_after")
+        retry_prompt        = pipeline.config.get("retry_prompt")
+
+        st.markdown("#### Chatbot")
+        st.markdown(f"Model: **{pipeline.get_model_name()}**, Context Window Size: **{summarize_after} Messages**")
+
+        summarized = st.number_input(label="Messages to Summarize:", value=summarized, min_value=1, step=1, key=EID.get())
+        messages_to_keep = st.number_input(label="Messages to Preserve:", value=messages_to_keep, min_value=0, step=1, key=EID.get())
+        return_anyway_after = st.number_input(label="Stop attempting after this amount of attempts:", value=return_anyway_after, min_value=1, step=1, key=EID.get())
+        retry_prompt = st.checkbox(label="Enable End-of-Attempts Prompt", value=retry_prompt, key=EID.get())
+        st.text(f"If disabled, code will automatically be outputted after {return_anyway_after} attempts.")
+
+        if st.button("Confirm"):
+
+            pipeline.config.set({
+                "messages_to_keep":     messages_to_keep,
+                "summarize_after":      summarize_after,
+                "return_anyway_after":  return_anyway_after,
+                "retry_prompt":         retry_prompt
+            })
+
+    def customize_validator():
+        EID.discard()
+
         # Validator variables
         compiler            = pipeline.validator.config.get("compiler")
         build_tool          = pipeline.validator.config.get("build_tool")

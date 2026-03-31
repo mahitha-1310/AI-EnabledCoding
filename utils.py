@@ -78,8 +78,6 @@ class _PathData:
 
 PATH = _PathData()
 
-import random
-
 class ElementIDManager:
     def __init__(self, minimum: int, maximum: int):
         self.element_ids = set()
@@ -98,7 +96,6 @@ class ElementIDManager:
 
     def discard(self):
         self.element_ids = set()
-
 
 EID = ElementIDManager(1, 32767)
 
