@@ -5,10 +5,9 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_openai import ChatOpenAI
 from Validation.validation_pipeline import ValidationPipeline
-from Validation.compilation_stage import CompilationStage
-from Validation.dynamic_analysis_stage import DynamicAnalysisStage
 from langgraph.graph.message import add_messages
 from typing import Annotated
+from config import HasaimConfiguration
 
 from tools import *
 from utils import *
@@ -24,12 +23,12 @@ class Pipeline():
     def __init__(self):
 
         # Model init
-        self.config = {
+        self.config = HasaimConfiguration({
             "summarize_after": 20,
             "messages_to_keep": 10,
             "return_anyway_after": 3,
             "retry_prompt": True
-        }
+        })
 
         self._model_name = os.getenv("OPENAI_API_MODEL")
         model_temperature = float(os.getenv("TEMPERATURE"))
@@ -47,14 +46,6 @@ class Pipeline():
     
     def get_model_name(self):
         return self._model_name
-    
-    def configure(self, **kwargs) -> None:
-        if len(kwargs) % 2 == 1 or len(kwargs) == 0:
-            raise ValueError(f"Parameter kwargs must have a nonzero and even length, not {len(kwargs)}")
-        for key, value in kwargs.items():
-            if not isinstance(key, str):
-                raise TypeError("Config parameter must be a string")
-            self.config[key] = value
 
     ### ROUTERS ###
 

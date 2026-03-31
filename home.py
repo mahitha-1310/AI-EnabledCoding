@@ -80,19 +80,32 @@ def pipeline_customize(pipeline: Pipeline):
 def customize_pipeline(pipeline: Pipeline) -> None:
     """Allows user to control pipeline."""
 
-    st.markdown(f"Model: **{pipeline.get_model_name()}**, Context Window Size: **{pipeline.summarize_after} Messages**")
+    st.markdown(f"Model: **{pipeline.get_model_name()}**, Context Window Size: **{pipeline.config.get("summarize_after")} Messages**")
 
-    summarized = st.number_input(label="Messages to Summarize:", value=pipeline.summarize_after-pipeline.messages_to_keep, min_value=1, step=1, key=67)
-    preseved = st.number_input(label="Messages to Preserve:", value=pipeline.messages_to_keep, min_value=0, step=1, key=69)
-    return_anyway_after = st.number_input(label="Stop attempting after this amount of attempts:", value=pipeline.return_anyway_after, min_value=1, step=1, key=42)
-    retry_prompt = st.checkbox(label="Enable End-of-Attempts Prompt", value=pipeline.retry_prompt)
+    summarized = st.number_input(label="Messages to Summarize:", value=pipeline.config.get("summarize_after")-pipeline.config.get("messages_to_keep"), min_value=1, step=1, key=67)
+    preseved = st.number_input(label="Messages to Preserve:", value=pipeline.config.get("messages_to_keep"), min_value=0, step=1, key=69)
+    return_anyway_after = st.number_input(label="Stop attempting after this amount of attempts:", value=pipeline.config.get("return_anyway_after"), min_value=1, step=1, key=42)
+    retry_prompt = st.checkbox(label="Enable End-of-Attempts Prompt", value=pipeline.config.get("retry_prompt"))
     st.text(f"If disabled, code will automatically be outputted after {return_anyway_after} attempts.")
 
     if st.button("Confirm"):
-        pipeline.messages_to_keep = preseved
-        pipeline.summarize_after = preseved + summarized
-        pipeline.return_anyway_after = return_anyway_after
-        pipeline.retry_prompt = retry_prompt
+
+        pipeline.config.set({
+            "messages_to_keep": preseved,
+            "summarize_after": preseved + summarized,
+            "return_anyway_after": return_anyway_after,
+            "retry_prompt": retry_prompt
+        })
+
+        # pipeline.validator.config.set({
+        #     "compiler": "clang",
+        #     "build_tool": None,
+        #     "static_analyzer": "clang-tidy",
+        #     "flags": [],
+        #     "check_only": True,
+        #     "style": "LLVM"
+        # })
+
         st.rerun()
     
 
