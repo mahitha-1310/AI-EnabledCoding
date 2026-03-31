@@ -90,7 +90,6 @@ def customize_pipeline(pipeline: Pipeline) -> None:
         return_anyway_after = pipeline.config.get("return_anyway_after")
         retry_prompt        = pipeline.config.get("retry_prompt")
 
-        st.markdown("#### Chatbot")
         st.markdown(f"Model: **{pipeline.get_model_name()}**, Context Window Size: **{summarize_after} Messages**")
 
         summarized = st.number_input(label="Messages to Summarize:", value=summarized, min_value=1, step=1, key=EID.get())
@@ -108,33 +107,7 @@ def customize_pipeline(pipeline: Pipeline) -> None:
                 "retry_prompt":         retry_prompt
             })
 
-    def customize_validator():
-        EID.discard()
-
-        # Chatbot variables
-        summarize_after     = pipeline.config.get("summarize_after")
-        messages_to_keep    = pipeline.config.get("messages_to_keep")
-        summarized          = summarize_after-messages_to_keep
-        return_anyway_after = pipeline.config.get("return_anyway_after")
-        retry_prompt        = pipeline.config.get("retry_prompt")
-
-        st.markdown("#### Chatbot")
-        st.markdown(f"Model: **{pipeline.get_model_name()}**, Context Window Size: **{summarize_after} Messages**")
-
-        summarized = st.number_input(label="Messages to Summarize:", value=summarized, min_value=1, step=1, key=EID.get())
-        messages_to_keep = st.number_input(label="Messages to Preserve:", value=messages_to_keep, min_value=0, step=1, key=EID.get())
-        return_anyway_after = st.number_input(label="Stop attempting after this amount of attempts:", value=return_anyway_after, min_value=1, step=1, key=EID.get())
-        retry_prompt = st.checkbox(label="Enable End-of-Attempts Prompt", value=retry_prompt, key=EID.get())
-        st.text(f"If disabled, code will automatically be outputted after {return_anyway_after} attempts.")
-
-        if st.button("Confirm"):
-
-            pipeline.config.set({
-                "messages_to_keep":     messages_to_keep,
-                "summarize_after":      summarize_after,
-                "return_anyway_after":  return_anyway_after,
-                "retry_prompt":         retry_prompt
-            })
+            st.rerun()
 
     def customize_validator():
         EID.discard()
@@ -147,8 +120,6 @@ def customize_pipeline(pipeline: Pipeline) -> None:
         allow_modify        = not pipeline.validator.config.get("check_only")
         style               = pipeline.validator.config.get("style")
 
-        st.markdown("#### Validator")
-
         compiler = st.selectbox("Compiler", ["clang"], key=EID.get())
         build_tool = st.selectbox("Build Tool", [None], key=EID.get())
         static_analyzer = st.selectbox("Static Analyzer", ["clang-tidy"], key=EID.get())
@@ -156,7 +127,7 @@ def customize_pipeline(pipeline: Pipeline) -> None:
         style = st.selectbox("Formatting Style", ["LLVM"], key=EID.get())
         allow_modify = st.checkbox("Formatter Can Modify Code", allow_modify, key=EID.get())
 
-        if st.button("Confirm"):
+        if st.button("Confirm", key=EID.get()):
 
             pipeline.validator.config.set({
                 "compiler":         compiler, # "clang",
@@ -166,15 +137,15 @@ def customize_pipeline(pipeline: Pipeline) -> None:
                 "check_only":       not allow_modify, # True,
                 "style":            style, # "LLVM"
             })
+
+            st.rerun()
     
-    chat, valid = st.tabs(["Customize Chatbot", "Customize Validator"])
+    chat, valid = st.tabs(["Chatbot", "Validator"])
 
     with chat:
         customize_chatbot()
     with valid:
         customize_validator()
-    
-    st.rerun()
     
 
 def file_uploader(path: str, label: str):
