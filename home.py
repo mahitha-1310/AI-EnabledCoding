@@ -81,63 +81,58 @@ def customize_pipeline(pipeline: Pipeline) -> None:
     """Allows user to control pipeline."""
 
     def customize_chatbot():
-        EID.discard()
+        if "cfg_summarized" not in st.session_state:
+            summarize_after  = pipeline.config.get('summarize_after')
+            messages_to_keep = pipeline.config.get('messages_to_keep')
+            st.session_state['cfg_summarize_after']     = summarize_after
+            st.session_state['cfg_summarized']          = summarize_after - messages_to_keep
+            st.session_state['cfg_messages_to_keep']    = messages_to_keep
+            st.session_state['cfg_return_anyway_after'] = pipeline.config.get('return_anyway_after')
+            st.session_state['cfg_retry_prompt']        = pipeline.config.get('retry_prompt')
 
-        # Chatbot variables
-        summarize_after     = pipeline.config.get("summarize_after")
-        messages_to_keep    = pipeline.config.get("messages_to_keep")
-        summarized          = summarize_after-messages_to_keep
-        return_anyway_after = pipeline.config.get("return_anyway_after")
-        retry_prompt        = pipeline.config.get("retry_prompt")
+        st.markdown(f"Model: **{pipeline.get_model_name()}**, Context Window Size: **{st.session_state['cfg_summarize_after']} Messages**")
 
-        st.markdown(f"Model: **{pipeline.get_model_name()}**, Context Window Size: **{summarize_after} Messages**")
+        st.number_input("Messages to Summarize:",                         min_value=1, step=1, key='cfg_summarized')
+        st.number_input("Messages to Preserve:",                          min_value=0, step=1, key='cfg_messages_to_keep')
+        st.number_input("Stop attempting after this amount of attempts:", min_value=1, step=1, key='cfg_return_anyway_after')
 
-        summarized = st.number_input(label="Messages to Summarize:", value=summarized, min_value=1, step=1, key=EID.get())
-        messages_to_keep = st.number_input(label="Messages to Preserve:", value=messages_to_keep, min_value=0, step=1, key=EID.get())
-        return_anyway_after = st.number_input(label="Stop attempting after this amount of attempts:", value=return_anyway_after, min_value=1, step=1, key=EID.get())
-        retry_prompt = st.checkbox(label="Enable End-of-Attempts Prompt", value=retry_prompt, key=EID.get())
-        st.text(f"If disabled, code will automatically be outputted after {return_anyway_after} attempts.")
+        st.checkbox(    "Enable End-of-Attempts Prompt",                                       key='cfg_retry_prompt')
+        st.text(f"If disabled, code will automatically be outputted after {st.session_state['cfg_return_anyway_after']} attempts.")
 
-        if st.button("Confirm"):
-
+        if st.button("Confirm", key='cfg_confirm_chatbot'):
             pipeline.config.set({
-                "messages_to_keep":     messages_to_keep,
-                "summarize_after":      summarize_after,
-                "return_anyway_after":  return_anyway_after,
-                "retry_prompt":         retry_prompt
+                "messages_to_keep":     st.session_state['cfg_messages_to_keep'],
+                "summarize_after":      st.session_state['cfg_summarize_after'] + st.session_state['cfg_messages_to_keep'],
+                "return_anyway_after":  st.session_state['cfg_return_anyway_after'],
+                "retry_prompt":         st.session_state['cfg_retry_prompt']
             })
-
             st.rerun()
 
     def customize_validator():
-        EID.discard()
+        if "cfg_compiler" not in st.session_state:
+            st.session_state['cfg_compiler']            = pipeline.validator.config.get("compiler")
+            st.session_state['cfg_build_tool']          = pipeline.validator.config.get("build_tool")
+            st.session_state['cfg_static_analyzer']     = pipeline.validator.config.get("static_analyzer")
+            # st.session_state['cfg_flags']               = pipeline.validator.config.get("flags")
+            st.session_state['cfg_check_only']          = pipeline.validator.config.get("check_only")
+            st.session_state['cfg_style']               = pipeline.validator.config.get("style")
 
-        # Validator variables
-        compiler            = pipeline.validator.config.get("compiler")
-        build_tool          = pipeline.validator.config.get("build_tool")
-        static_analyzer     = pipeline.validator.config.get("static_analyzer")
-        flags               = pipeline.validator.config.get("flags")
-        allow_modify        = not pipeline.validator.config.get("check_only")
-        style               = pipeline.validator.config.get("style")
+        st.selectbox( "Compiler",                      ["clang"],      key='cfg_compiler')
+        st.selectbox( "Build Tool",                    [None],         key='cfg_build_tool')
+        st.selectbox( "Static Analyzer",               ["clang-tidy"], key='cfg_static_analyzer')
+        # st.text_input("Enter execution flags here...",                 key='cfg_flags')
+        st.selectbox( "Formatting Style",              ["LLVM"],       key='cfg_style')
+        st.checkbox(  "Formatter Cannot Modify Code",                  key='cfg_allow_modify')
 
-        compiler = st.selectbox("Compiler", ["clang"], key=EID.get())
-        build_tool = st.selectbox("Build Tool", [None], key=EID.get())
-        static_analyzer = st.selectbox("Static Analyzer", ["clang-tidy"], key=EID.get())
-        flags = st.text_input("Enter execution flags here...", key=EID.get())
-        style = st.selectbox("Formatting Style", ["LLVM"], key=EID.get())
-        allow_modify = st.checkbox("Formatter Can Modify Code", allow_modify, key=EID.get())
-
-        if st.button("Confirm", key=EID.get()):
-
+        if st.button("Confirm", key='confirm_validator'):
             pipeline.validator.config.set({
-                "compiler":         compiler, # "clang",
-                "build_tool":       build_tool, # None,
-                "static_analyzer":  static_analyzer, # "clang-tidy",
-                "flags":            flags, # [],
-                "check_only":       not allow_modify, # True,
-                "style":            style, # "LLVM"
+                "compiler":         st.session_state['cfg_compiler'],       
+                "build_tool":       st.session_state['cfg_build_tool'],     
+                "static_analyzer":  st.session_state['cfg_static_analyzer'],
+                # "flags":            st.session_state['cfg_flags'],          
+                "check_only":       st.session_state['cfg_check_only'],   
+                "style":            st.session_state['cfg_style']          
             })
-
             st.rerun()
     
     chat, valid = st.tabs(["Chatbot", "Validator"])
