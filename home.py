@@ -93,12 +93,12 @@ def customize_pipeline(pipeline: Pipeline) -> None:
 
     def customize_validator():
 
-        vc.display("compiler", **{"text":vc.get("compiler")})
-        # vc.display("build_tool", **{"text":vc.get("build_tool")})
-        vc.display("static_analyzer", **{"text":vc.get("static_analyzer")})
+        vc.display("compiler", "Choose a compiler for the compilation step.")
+        # vc.display("build_tool")
+        vc.display("static_analyzer", "Choose a code analyzer for static analysis step.")
         # vc.display("flags")
-        vc.display("check_only", "Should the validator only check the code and fix no formatting modifications?", override_type=bool)
-        vc.display("style", **{"text":vc.get("style")})
+        vc.display("check_only", "Should the validator only check the code and make no formatting modifications?", override_type=bool)
+        vc.display("style", "Formatting standard the format linter will use.")
     
     chat, valid = st.tabs(["Chatbot", "Validator"])
 
