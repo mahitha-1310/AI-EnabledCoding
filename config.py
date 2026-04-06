@@ -1,6 +1,15 @@
+import streamlit as st
 from typing import Any
 
+_MAPPINGS = {
+    bool: st.checkbox,
+    float: st.number_input,
+    str: st.text_input,
+    list: st.selectbox,
+}
+
 class HasaimConfiguration():
+
     def __init__(self, config: dict):
         """
         A dictionary with getter and setter support only.
@@ -34,14 +43,55 @@ class HasaimConfiguration():
 
         for key, value in config.items():
 
-            if self._config.get(key) is None:
+            if key not in self._config:
                 print(f"Config key {key} not found")
                 continue
             elif not isinstance(key, str):
                 raise TypeError("Config key must be a string")
-            elif type(value) != type(self._config[key]):
-                raise TypeError("Config type cannot be changed")
-            
+
+            expected_type = type(self._config[key])
+            if not isinstance(value, expected_type):
+                try:
+                    value = expected_type(value)
+                except (ValueError, TypeError):
+                    raise TypeError(f"Config value for '{key}' must be of type {expected_type.__name__}")
+
             self._config[key] = value
         
         return self._config
+    
+    def display(self, key: str, text: str | None, **kwargs) -> Any:
+        if key not in self._config:
+            raise KeyError(f"Config value {key} not found in config")
+
+        value = self._config[key]
+        label = key.replace("_", " ").title()
+
+        if isinstance(value, int):
+            value = float(value)
+
+        if isinstance(value, list):
+            kwargs["options"] = value
+        else:
+            kwargs["value"] = value
+
+        return_value = self._get_mapping(key=key, label=label, **kwargs)
+        if text:
+            self._add_description(text)
+        return return_value
+
+    def _get_mapping(self, key: str, label: str, **kwargs) -> Any:
+
+        value = kwargs["value"] or kwargs["options"]
+
+        for value_type, function in _MAPPINGS.items():
+            if isinstance(value, value_type):
+                return function(label=label, key=key, **kwargs)
+
+        raise TypeError(f"Type of value '{value}' ({type(value).__name__}) not supported")
+    
+    def _add_description(txt: str, md=True, width="stretch") -> None:
+        if md:
+            st.markdown(txt, width=width)
+        else:
+            st.text(txt, width=width)
