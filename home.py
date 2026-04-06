@@ -84,21 +84,21 @@ def customize_pipeline(pipeline: Pipeline) -> None:
     vc = pipeline.validator.config
 
     def customize_chatbot():
-        numargs = {"step":1.0}
+        numargs = {"step":1.0, "min_value":1.0, "format":"%0f"}
 
         pc.display("summarize_after", "The amount of messages that will cause the LLM to summarize.", **numargs)
-        pc.display("messages_to_keep", "The aount of messages that won't be summarized.", **numargs)
+        pc.display("messages_to_keep", "The amount of messages that won't be summarized.", **numargs)
         pc.display("return_anyway_after", "The amount of attempts the LLM is allowed to have before a forced return.", **numargs)
-        pc.display("retry_prompt", "Should the user be asked if they want to continue prompting?")
+        pc.display("retry_prompt", "Should the user be asked if they want to continue prompting?", override_type=bool)
 
     def customize_validator():
 
-        vc.display("compiler")
-        vc.display("build_tool")
-        vc.display("static_analyzer")
+        vc.display("compiler", **{"text":vc.get("compiler")})
+        # vc.display("build_tool", **{"text":vc.get("build_tool")})
+        vc.display("static_analyzer", **{"text":vc.get("static_analyzer")})
         # vc.display("flags")
-        vc.display("check_only")
-        vc.display("style")
+        vc.display("check_only", "Should the validator only check the code and fix no formatting modifications?", override_type=bool)
+        vc.display("style", **{"text":vc.get("style")})
     
     chat, valid = st.tabs(["Chatbot", "Validator"])
 

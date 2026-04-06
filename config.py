@@ -60,7 +60,7 @@ class HasaimConfiguration():
         
         return self._config
     
-    def display(self, key: str, text: str | None, **kwargs) -> Any:
+    def display(self, key: str, text: str | None = None, override_type: Any = None, **kwargs) -> Any:
         if key not in self._config:
             raise KeyError(f"Config value {key} not found in config")
 
@@ -75,18 +75,21 @@ class HasaimConfiguration():
         else:
             kwargs["value"] = value
 
-        return_value = self._get_mapping(key=key, label=label, **kwargs)
+        return_value = self._get_mapping(key=key, label=label, override_type=override_type, **kwargs)
         if text:
             self._add_description(text)
         return return_value
 
-    def _get_mapping(self, key: str, label: str, **kwargs) -> Any:
+    def _get_mapping(self, key: str, label: str, override_type: Any = None, **kwargs) -> Any:
 
         value = kwargs["value"] or kwargs["options"]
 
-        for value_type, function in _MAPPINGS.items():
-            if isinstance(value, value_type):
-                return function(label=label, key=key, **kwargs)
+        if not override_type:
+            for value_type, function in _MAPPINGS.items():
+                if isinstance(value, value_type):
+                    return function(label=label, key=key, **kwargs)
+        else:
+            return _MAPPINGS[override_type](label=label, key=key, **kwargs)
 
         raise TypeError(f"Type of value '{value}' ({type(value).__name__}) not supported")
     
