@@ -65,11 +65,13 @@ class HasaimConfiguration():
         value = self._config[key]
         label = key.replace("_", " ").title()
 
-        if isinstance(value, int):
+        if isinstance(value, int) and not isinstance(value, bool):
             value = float(value)
-
-        if isinstance(value, list):
-            kwargs["options"] = value
+            kwargs["format"] = "%0f"
+ 
+        if override_type is list or isinstance(value, list):
+            if "options" not in kwargs:
+                kwargs["options"] = value
         else:
             kwargs["value"] = value
 
