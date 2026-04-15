@@ -8,6 +8,15 @@ _MAPPINGS = {
     list: st.selectbox,
 }
 
+def iter_list(item_list: list[Any], index: int = 0) -> dict[str, Any]:
+    if index >= len(item_list) or index < 0:
+        raise ValueError("Index must be within bounds of item_list size")
+
+    return {
+        "options": item_list,
+        "index": index
+    }
+
 class HasaimConfiguration():
 
     def __init__(self, config: dict):
@@ -57,6 +66,9 @@ class HasaimConfiguration():
                     raise TypeError(f"Config value for '{key}' must be of type {expected_type.__name__}")
 
             self._config[key] = value
+    
+    def list_item(self, config_name: str) -> Any:
+        return self._config[config_name]["options"][self._config[config_name]["index"]]
 
     def display(self, key: str, text: str | None = None, override_type: Any = None, **kwargs) -> Any:
         if key not in self._config:
@@ -69,9 +81,10 @@ class HasaimConfiguration():
             value = float(value)
             kwargs["format"] = "%0f"
  
-        if override_type is list or isinstance(value, list):
+        if override_type is list or isinstance(value, dict):
             if "options" not in kwargs:
-                kwargs["options"] = value
+                kwargs["options"] = value["options"]
+                kwargs["index"]   = value["index"]
         else:
             kwargs["value"] = value
 
