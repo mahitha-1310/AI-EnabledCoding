@@ -1,3 +1,6 @@
+# Chroma
+.chroma/chroma.sqlite3
+
 # Logging
 llm_queries.log
 

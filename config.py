@@ -5,7 +5,7 @@ _MAPPINGS = {
     bool: st.checkbox,
     float: st.number_input,
     str: st.text_input,
-    list: st.selectbox,
+    list: st.selectbox
 }
 
 def iter_list(item_list: list[Any], index: int = 0) -> dict[str, Any]:
@@ -95,14 +95,14 @@ class HasaimConfiguration():
 
     def _get_mapping(self, key: str, label: str, override_type: Any = None, **kwargs) -> Any:
 
-        value = kwargs.get("value") or kwargs.get("options")
+        value = kwargs["value"] if "value" in kwargs else kwargs.get("options")
 
-        if not override_type:
+        if override_type:
+            return _MAPPINGS[override_type](label=label, key=key, **kwargs)
+        else:
             for value_type, function in _MAPPINGS.items():
                 if isinstance(value, value_type):
                     return function(label=label, key=key, **kwargs)
-        else:
-            return _MAPPINGS[override_type](label=label, key=key, **kwargs)
 
         raise TypeError(f"Type of value '{value}' ({type(value).__name__}) not supported")
     

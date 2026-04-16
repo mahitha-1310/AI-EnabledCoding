@@ -25,7 +25,7 @@ class ValidationPipeline:
             "compiler": iter_list(["clang", "gcc"], 0),
             "build_tool": iter_list(["None"], 0),
             "static_analyzer": iter_list(["clang-tidy"], 0),
-            "flags": [],
+            "flags": "",
             "check_only": True,
             "style": iter_list(["LLVM", "Google"], 0)
         })
@@ -101,7 +101,7 @@ class ValidationPipeline:
         else:
             results["dynamic_analysis"] = self.dynamic_analysis.run(
                 executable_path=exe_path,
-                flags=self.config["flags"]
+                flags=self.config["flags"].split()
             )
 
         # Stage 4: Formatting
