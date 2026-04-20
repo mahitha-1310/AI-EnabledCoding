@@ -1,7 +1,6 @@
 import streamlit as st
 from generation_pipeline import Pipeline
 from utils import *
-import time
 import os
 
 CHATBOT_MESSAGE = "What to do, what to do..."
@@ -9,11 +8,6 @@ CHATBOT_MESSAGE = "What to do, what to do..."
 @st.cache_resource
 def get_pipeline():
     return Pipeline()
-
-def stream(response, delay: float):
-    for word in response:#.strip():
-        yield word
-        time.sleep(delay)
 
 def chatbot():
     if 'messages' not in st.session_state:
@@ -32,11 +26,10 @@ def chatbot():
             
             # Produce response
             with st.chat_message('assistant'):
-                response = pipeline.run(
+                response = st.write_stream(pipeline.run(
                     user_input=prompt,
                     user_id=user_id
-                )
-                st.write_stream(stream=stream(response=response, delay=0.01))
+                ))
             
             clear_directory(PATH.input_path)
             transfer(source=PATH.editor_path, destination=PATH.output_path)
@@ -45,21 +38,20 @@ def chatbot():
             st.rerun()
 
 def codebase_download():
-    disable = not os.listdir(PATH.output_path)
+    disable = not any(files for _, _, files in os.walk(PATH.output_path))
     text = "Nothing to Download" if disable else "Download Codebase"
-    if st.button(text, disabled=disable, use_container_width=True):
-        try:
-            zip_data = create_zip(PATH.output_path)
-            st.download_button(
-                label="Click to Download ZIP",
-                data=zip_data,
-                file_name=f"{os.path.basename(PATH.output_path)}.zip",
-                mime="application/zip",
-                use_container_width=True
-            )
-            st.success("ZIP file ready for download!")
-        except Exception as e:
-            st.error(f"Error creating zip: {str(e)}")
+    try:
+        zip_data = create_zip(PATH.output_path)
+        st.download_button(
+            label=text, 
+            disabled=disable,
+            data=zip_data,
+            file_name=f"{os.path.basename(PATH.output_path)}.zip",
+            mime="application/zip",
+            use_container_width=True
+        )
+    except Exception as e:
+        st.error(f"Error creating zip: {str(e)}")
 
 def codebase_clear():
     disable = not os.listdir(PATH.editor_path) and not os.listdir(PATH.input_path)
@@ -139,8 +131,8 @@ if __name__ == "__main__":
         with cm:
             file_uploader(PATH.test_path, "Upload Unit Tests")
         with cr:
+            pipeline_customize(pipeline=pipeline)
             codebase_download()
             codebase_clear()
-            pipeline_customize(pipeline=pipeline)
     with edit_col:
         chatbot()

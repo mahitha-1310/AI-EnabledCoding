@@ -40,12 +40,17 @@ class DynamicAnalysisStage:
             raise FileNotFoundError(f"Executable not found: {executable_path}")
         
 
-
-        cmd = [
-            "valgrind",
-            *flags,
-            executable_path
-        ]
+        try:
+            cmd = [
+                "valgrind",
+                *flags,
+                executable_path
+            ]
+        except:
+            cmd = [
+                "valgrind",
+                executable_path
+            ]
 
         proc = subprocess.run(
             cmd,

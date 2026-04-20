@@ -200,9 +200,8 @@ class Pipeline():
         if not self.graph:
             self.build(MemorySaver())
 
-        response = self.graph.invoke(
+        response = self.graph.stream(
             {"messages": [HumanMessage(content=user_input)]},
             {"configurable": {"thread_id": user_id}}
         )
-
-        return response['messages'][-1].content
+        yield response['messages'][-1].content
