@@ -28,6 +28,9 @@ class HasaimConfiguration():
         """
         self._config = config
     
+    def __getitem__(self, key: str) -> Any:
+        return self._config[key]
+
     def get(self, key: str) -> Any:
         """
         Get a config value using a key.

@@ -1,393 +1,211 @@
 import os
+import re
 import subprocess
 import json
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
-DEFAULT_FLAGS = [
-    "-std=c11",
-    "-O0",
-    "-g",
-    "-Wall",
-    "-Wextra"
-]
+MAKE_COMMAND = ["bear", "--", "make"]
+MAKEFILE_ALIASES = ["Makefile", "makefile", "GNUmakefile"]
 
 class CompilationStage:
     """Class to run the compilation stage of the validation pipeline"""
 
-    def __init__(self, output_dir: str, project_root: str):
+    def __init__(self, logs_dir: str, artifacts_dir: str, project_root: str):
         """
-        Initialize the compilation stage with where to write stage's output (this refers 
-        to root from which to write `.o` files and executables), as well as the project root
-        (where source code would be found)
+        Initialize the compilation stage with where to write stage's output (logs and artifacts),
+        as well as the project root (where source code would be found).
 
         Args:
-            output_dir: Path to directory to which this stage will write all generated artifacts
-                        and/or log files (may be existing directory or nonexisting, in which case
-                        a new directory will be created at the specified path)
+            logs_dir: Path to directory to which this stage will write all generated log files
+            artifacts_dir: Path to directory to which this stage will write all generated artifacts
+                           (`.o` files, executables, etc.)
             project_root: Path to project directory (where all source code/header files will be
                           found)
-                
+
             (NOTE: these may or may not be a relative path; if relative, this initializer normalizes
             the relative path to be an absolute path)
         """
         self.project_root = os.path.abspath(project_root)
 
-        self.output_dir = os.path.abspath(output_dir)
-        os.makedirs(self.output_dir, exist_ok=True)
-
-        # For now, log directory is always nested inside compilation directory
-        # ====================================================================
-        # In the future, I'd like to make this a third parameter such that the user can
-        #   specify where they would like logs to be written
-        self.logs_dir = os.path.join(self.output_dir, "logs/")
+        # Create `logs/compilation/` subdirectory
+        self.logs_dir = os.path.abspath(logs_dir)
         os.makedirs(self.logs_dir, exist_ok=True)
 
+        # Create `artifacts/compilation/` subdirectory
+        self.artifacts_dir = os.path.abspath(artifacts_dir)
+        os.makedirs(self.artifacts_dir, exist_ok=True)
+
     # ------------------------------------------------------------------------
-    #     PUBLIC METHODS 
+    #     PUBLIC METHODS
     # ------------------------------------------------------------------------
 
-    def run(
-        self, 
-        source_files: List[str], 
-        header_files: List[str], 
-        include_dirs: List[str],
-        compiler: str = "clang",
-        build_tool: str = None
-    ) -> Dict[str, Any]:
+    def run(self) -> Dict[str, Any]:
         """
-        Run the compilation stage of validation pipeline
-
-        Args:
-            source_files: List of paths to source code (`.c`) files. May
-                          be relative or absolute paths. 
-            header_files: List of paths to header (`.h`) files. May be
-                          relative or absolute paths.
-            include_dirs: List of paths to all include directories that 
-                          a C compiler will need. Assumed to be absolute
-                          paths.
-            compiler: Which compiler to use. Default is `clang`. `g++` support
-                      will be implemented in future sprints.
-            build_tool: The specific build tool used by the C project. Popular
-                        choices are Make & CMake. If not specified, compilation
-                        happens manually with `clang`. 
-            NOTE: build tools is not a supported feature at this point. All calls
-                to this method will perform manual compilation with `clang`.
+        Run the compilation stage of validation pipeline. This stage requires
+        the presence of a `Makefile` in the project root directory.
 
         Returns:
             A dictionary mapping relevant outputs to the contents/states of the
-            outputs, including: 
+            outputs, including:
                 - success/failure of stage
                 - generated errors/warnings
                 - stdout/stderr
                 - any misc. artifacts
         """
-        # CASE 1: No build tool provided
-        if not build_tool:
-            results = self.run_manual_compile(
-                source_files=source_files,
-                include_dirs=include_dirs,
-                compiler=compiler
-            )
+        if not self._makefile_exists():
+            return {
+                "make_output": {
+                    "cmd": ' '.join(MAKE_COMMAND),
+                    "success": False,
+                    "stdout": "",
+                    "stderr": "No Makefile found in project root."
+                },
+                "compile_commands_path": None,
+                "executable_path": None,
+                "error_type": "missing_makefile",
+                "error_detail": (
+                    "No Makefile was found in the project root directory. "
+                    "Please upload a Makefile alongside your source files."
+                )
+            }
 
-        # CASE 2: Build tool provided
-        # NOT IMPLEMENTED IN THIS SPRINT
-        else:
-            # self.run_via_build_tool()
-            results = {"error": "user-defined build tool functionality not yet supported"}
-        
-        # Ensure directory is created for logs
-        os.makedirs(self.output_dir, exist_ok=True)
+        # Run `make` build tool
+        results = self._run_make_build()
 
-        # Log results to files in `logs/` subdirectory
+        # Write logs to disk
         self._write_logs(results)
 
-        # Generate `compile_commands.json` file for next stage (static analysis)
-        if results["executable_path"] != None:
-            self._generate_compile_commands(results)
-
         return results
 
-    def run_manual_compile(
-        self, 
-        source_files: List[str], 
-        include_dirs: List[str],
-        compiler: str = "clang", 
-        flags: List[str] = None
-    ) -> Dict[str, Any]:
-        """
-        Manually compile each `.c` source file into a `.o` object file.
-        Then, manually link each object file to generate an executable.
+    # ------------------------------------------------------------------------
+    #     PRIVATE HELPERS
+    # ------------------------------------------------------------------------
 
-        Args:
-            source_files: Paths to `.c` source files.
-            include_dirs: List of all include directories in this project
-            compiler: C compiler to invoke (default: clang).
-            flags: Optional list of user-defined, additional compiler flags.
-        
+    def _run_make_build(self) -> Dict[str, Any]:
+        """
+        Run `bear -- make` in the project root directory, capture stdout/stderr, and return results.
+
         Returns:
             A dictionary with:
-                - "file_outputs": per-file compile results (success, stdout, 
-                  stderr, object file path, and command used).
-                - "link_output": results of the linking step 
-                  (success, stdout, stderr).
-                - "executable_path": path to the generated executable, or None 
-                  if linking failed or was skipped.
+                - "make_output": results of the `bear -- make` command (success, stdout, stderr).
+                - "compile_commands_path": path to the generated `compile_commands.json` file,
+                                           or None if `make` failed or did not generate a
+                                           `compile_commands.json` file.
+                - "executable_path": path to the generated executable, or None if `make` failed
+                                     or did not generate an executable.
         """
-        # Construct complete lists of flags necessary for successful compilation
-        if flags is None:
-            flags = []
-        system_includes = self._detect_system_include_paths(compiler)
-        full_flags = DEFAULT_FLAGS + flags + [f"-I{p}" for p in system_includes]
-
-        # ====================== STEP 1 ======================
-        # Compile each source (`.c`) file into an object (`.o`) file
-        compile_results = self._compile_source_files(
-            source_files=source_files,
-            include_dirs=include_dirs,
-            compiler=compiler,
-            flags=full_flags
-        )
-
-        object_files = compile_results["object_files"]
-        file_outputs = compile_results["file_outputs"]
-          
-        results = {
-            "file_outputs": file_outputs,
-            "link_output": {},
-            "executable_path": None
-        }
-
-        # Attempt to generate a `compile_commands.json` file for all successfully
-        # compiled source files
-        # TODO: Unsure how to fix this...
-        # self._generate_compile_commands(results)
-
-        # ====================== STEP 2 ======================
-        # If any compilation failed, abort linking stage
-        if len(object_files) < len(source_files):
-            results["link_output"]["success"] = False
-            return results
-        
-        # ====================== STEP 3 ======================
-        link_result = self._link_object_files(
-            object_files=object_files,
-            compiler=compiler
-        )
-        results["link_output"] = link_result["link_output"]
-        results["executable_path"] = link_result["executable_path"]
-          
-        return results
-
-    # ------------------------------------------------------------------------
-    #     PRIVATE HELPERS 
-    # ------------------------------------------------------------------------
-
-    def _compile_source_files(
-        self,
-        source_files: List[str],
-        include_dirs: List[str],
-        compiler: str = "clang",
-        flags: List[str] = None
-    ) -> Dict[str, Any]:
-        """
-        Compile each source file into a `.o` object file
-
-        Returns:
-            {
-                "object_files": [...], (list of object file names)
-                "file_outputs": {
-                    src_path: { cmd, success, stdout, stderr, object_file }
-                }
-            }
-        """ 
-        if flags is None:
-            flags = []
-        
-        include_flags = [f"-I{d}" for d in include_dirs]
-
-        file_outputs = {}
-        object_files = []
-
-        # Compile each source (`.c`) file into an object (`.o`) file
-        for src in source_files:
-            # Ensure `src` is an absolute path
-            src = os.path.abspath(src)
-
-            # Extract only the filename from `.c` file's full path
-            obj_basename = os.path.splitext(os.path.basename(src))[0]
-
-            # Add `.o` extension
-            obj_name = obj_basename + ".o"
-            obj = os.path.join(self.output_dir, obj_name)
-            cmd = [compiler, "-c", src] + flags + include_flags + ["-o", obj]
-
-            # Use Python subprocess module to run command, capture
-            # return code and stdout/stderr streams
+        try:
             proc = subprocess.run(
-                cmd,
+                MAKE_COMMAND,
+                cwd=self.project_root,
                 capture_output=True,
                 text=True
             )
 
-            success = proc.returncode == 0
+            # Attempt to find generated `compile_commands.json` file
+            compile_commands_path = os.path.join(self.project_root, "compile_commands.json")
+            if not os.path.isfile(compile_commands_path):
+                compile_commands_path = None
 
-            file_outputs[src] = {
-                "cmd": ' '.join(cmd),     # to store command ran
-                "success": success,          # to store success/fail per file
-                "stdout": proc.stdout,       # to capture stdout per file
-                "stderr": proc.stderr,       # to capture stderr per file
-                "object_file": obj if success else None
+            # Attempt to find generated executable (if any)
+            executable_path = None
+            for file in os.listdir(self.project_root):
+                full_path = os.path.join(self.project_root, file)
+                if os.access(full_path, os.X_OK) and not os.path.isdir(full_path):
+                    executable_path = full_path
+                    break
+
+            result = {
+                "make_output": {
+                    "cmd": ' '.join(MAKE_COMMAND),
+                    "success": proc.returncode == 0,
+                    "stdout": proc.stdout,
+                    "stderr": proc.stderr
+                },
+                "compile_commands_path": compile_commands_path,
+                "executable_path": executable_path
             }
 
-            if success:
-                object_files.append(obj)
+            # If make failed, check whether the cause is an unsupported compiler
+            if proc.returncode != 0:
+                bad_compiler = self._detect_unsupported_compiler(proc.stderr)
+                if bad_compiler:
+                    result["error_type"] = "unsupported_compiler"
+                    result["error_detail"] = (
+                        f"The Makefile invokes '{bad_compiler}', which is not installed. "
+                        f"Supported compilers are: clang, gcc."
+                    )
 
-        return {
-            "object_files": object_files,
-            "file_outputs": file_outputs
-        }
-        
-    def _link_object_files(
-        self,
-        object_files: List[str],
-        compiler: str = "clang"
-    ) -> Dict[str, Any]:
-        """
-        Attempt to generate executable by linking all generated object files
+            return result
 
-        Returns: 
-            {
-                "link_output": { cmd, success, stdout, stderr },
-                "executable_path": str (or None if executable not generated)
+        except Exception as e:
+            print(f"Error running make: {e}")
+            return {
+                "make_output": {
+                    "cmd": ' '.join(MAKE_COMMAND),
+                    "success": False,
+                    "stdout": "",
+                    "stderr": str(e)
+                },
+                "compile_commands_path": None,
+                "executable_path": None
             }
-        """
-        # Attempt linking all object files 
-        executable_path = os.path.join(self.output_dir, "a.out")
-        cmd = [compiler] + object_files + ["-o", executable_path]
 
-        # Run command to attempt linking all object files
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True
-        )
-
-        return {
-            "link_output": {
-                "cmd": ' '.join(cmd),
-                "success": proc.returncode == 0,
-                "stdout": proc.stdout,
-                "stderr": proc.stderr
-            },
-            "executable_path": executable_path if proc.returncode == 0 else None
-        }
-    
     def _write_logs(self, results: Dict[str, Any]) -> None:
         """
-        Write compilation and linking results to the `logs/` subdirectory
+        Write compilation results to the `logs/` subdirectory.
 
         Args:
             results: a dictionary containing pertinent information gathered
-                     from an attempt to compile and link `.c` files
+                     from an attempt to compile via make
         """
+        if "make_output" not in results:
+            raise ValueError("Results dictionary is missing required key: 'make_output'.")
 
         os.makedirs(self.logs_dir, exist_ok=True)
 
         # ====================== STEP 1 ======================
-        # Write per-file compile logs
-        for src, file_results in results["file_outputs"].items():
-            base = os.path.splitext(os.path.basename(src))[0]
-            log_path = os.path.join(self.logs_dir, f"compile_{base}.log")
+        # Write `make` command output log
+        make_log_path = os.path.join(self.logs_dir, "make_output.log")
+        with open(make_log_path, "w") as f:
+            for key, value in results["make_output"].items():
+                f.write(f"{key}: {value}\n\n")
+            f.write(f"compile_commands_path: {results['compile_commands_path']}\n\n")
+            f.write(f"executable_path: {results['executable_path']}\n\n")
 
-            with open(log_path, "w") as f:
-                for artifact, content in file_results.items():
-                    # Reformat command field for prettier log printing
-                    content = content.replace(" ", "\n\t") if artifact == "cmd" else content
-                    f.write(f"{artifact}: " + f"{content}\n\n")
-            
         # ====================== STEP 2 ======================
-        # Write linker log
-        link_log_path = os.path.join(self.logs_dir, "link.log")
-        
-        with open(link_log_path, "w") as f:
-            for artifact, content in results["link_output"].items():
-                content = content.replace(" ", "\n\t") if artifact == "cmd" else content
-                f.write(f"{artifact}: " + f"{content}\n\n")
-        
-        # ====================== STEP 3 ======================
         # Write a summary JSON dump log
         summary_path = os.path.join(self.logs_dir, "summary.json")
-
         with open(summary_path, "w") as f:
             json.dump(results, f, indent=4)
 
-    def _generate_compile_commands(self, results: Dict[str, Any]):
+    def _detect_unsupported_compiler(self, stderr: str) -> Optional[str]:
         """
-        Generates the necessary `compile_commands.json` file in order for static 
-        analysis (via clang-tidy) to be performed.
-        
-        Each successfully compiled source file gets an entry consisting of:
-            - directory: absolute path to the project root (note that this is NOT
-                         the `compilation/` folder)
-            - file: absolute path to the `.c` file
-            - command: the exact command used to compile this file
-        
-        Args:
-            results: a dictionary containing pertinent information gathered
-                     from an attempt to compile and link `.c` files
+        Scan make stderr for patterns that indicate a missing/unsupported compiler binary.
+
+        Returns the offending binary name if one is found, otherwise None.
         """
-        compile_db = []
+        patterns = [
+            # make: <name>: No such file or directory
+            r"make(?:\[\d+\])?: (\S+): No such file or directory",
+            # /bin/sh: 1: <name>: not found
+            r"/\S+sh: \d+: (\S+): not found",
+            # bash/sh: <name>: command not found
+            r"(?:bash|sh): (\S+): command not found",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, stderr)
+            if match:
+                return match.group(1)
+        return None
 
-        # Generate an entry for each successfully compiled `.c` file
-        for src_path, file_result in results["file_outputs"].items():
-            if not file_result["success"]:
-                continue
-             
-            entry = {
-                "directory": self.project_root,
-                "file": os.path.abspath(src_path),
-                "command": file_result["cmd"]
-            }
-
-            compile_db.append(entry)
-
-        out_path = os.path.join(self.output_dir, "compile_commands.json")
-        with open(out_path, "w") as f:
-            json.dump(compile_db, f, indent=4)
-        
-    def _detect_system_include_paths(self, compiler: str = "clang") -> List[str]:
+    def _makefile_exists(self) -> bool:
         """
-        Ask specified compiler (default clang) for its default system include paths.
+        Checks whether a Makefile exists in the project root.
 
-        This function is portable across Linux, macOS, and Windows.
+        Returns: True if a Makefile is present, False otherwise.
         """
-        try:
-            proc = subprocess.run(
-                [compiler, "-E", "-x", "c", "-", "-v"],
-                input="", text=True, capture_output=True
-            )
-
-            include_paths = []
-            recording = False
-
-            # Parse all include paths used by compiler
-            for line in proc.stderr.splitlines():
-                line = line.strip()
-
-                if line == "#include <...> search starts here:":
-                    recording = True
-                    continue
-                if line == "End of search list.":
-                    recording = False
-                    continue
-
-                if recording:
-                    # Skip non-path annotations and framework directories
-                    if "(" in line or ")" in line:
-                        continue
-                    include_paths.append(line)
-
-            return include_paths
-
-        except Exception:
-            return []
+        for name in MAKEFILE_ALIASES:
+            if os.path.isfile(os.path.join(self.project_root, name)):
+                return True
+        return False

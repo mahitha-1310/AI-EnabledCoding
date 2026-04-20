@@ -4,6 +4,8 @@ from utils import *
 import time
 import os
 
+st.set_page_config(layout="wide", page_title="HASAIM")
+
 CHATBOT_MESSAGE = "What to do, what to do..."
 
 @st.cache_resource
@@ -18,7 +20,7 @@ def stream(response, delay: float):
 def chatbot():
     if 'messages' not in st.session_state:
         st.session_state.messages = []
-    with st.container(height=450):
+    with st.container(height=700):
         for message in st.session_state.messages:
             st.chat_message(message['role']).markdown(message['content'])
         prompt = st.chat_input(CHATBOT_MESSAGE)
@@ -32,14 +34,16 @@ def chatbot():
             
             # Produce response
             with st.chat_message('assistant'):
-                response = pipeline.run(
-                    user_input=prompt,
-                    user_id=user_id
-                )
+                with st.spinner("Working on it... (check terminal for live progress)"):
+                    response = pipeline.run(
+                        user_input=prompt,
+                        user_id=user_id
+                    )
                 st.write_stream(stream=stream(response=response, delay=0.01))
             
             clear_directory(PATH.input_path)
             transfer(source=PATH.editor_path, destination=PATH.output_path)
+            transfer(source=PATH.testing_path, destination=PATH.output_path)
 
             st.session_state.messages.append({'role': 'assistant', 'content': response})
             st.rerun()
@@ -93,8 +97,6 @@ def customize_pipeline(pipeline: Pipeline) -> None:
 
     def customize_validator():
 
-        vc.display("compiler", "Choose a compiler for the compilation step.", override_type=list)
-        vc.display("build_tool", "Choose a build tool to use for the compilation step.", override_type=list)
         vc.display("static_analyzer", "Choose a code analyzer for static analysis step.", override_type=list)
         vc.display("flags", "Flags to use alongside the execution command.")
         vc.display("check_only", "Should the validator only check the code and make no formatting modifications?", override_type=bool)
@@ -108,17 +110,29 @@ def customize_pipeline(pipeline: Pipeline) -> None:
         customize_validator()
     
 
+_ALLOWED_EXTENSIONS = {".c", ".h"}
+_ALLOWED_FILENAMES  = {"Makefile", "makefile", "GNUmakefile"}
+
 def file_uploader(path: str, label: str):
     uploaded_files = st.file_uploader(
         label=label,
         accept_multiple_files=True
     )
     for uploaded_file in uploaded_files:
+        name = uploaded_file.name
+        ext  = os.path.splitext(name)[1].lower()
+
+        if ext not in _ALLOWED_EXTENSIONS and name not in _ALLOWED_FILENAMES:
+            st.warning(
+                f"'{name}' was skipped: only .c/.h source files and Makefiles are supported."
+            )
+            continue
+
         # Read the file data
         bytes_data = uploaded_file.read()
-        
+
         # Save the file to pipeline.input_path
-        file_path = os.path.join(path, uploaded_file.name)
+        file_path = os.path.join(path, name)
         with open(file_path, "wb") as f:
             f.write(bytes_data)
 

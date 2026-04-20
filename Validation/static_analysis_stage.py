@@ -6,39 +6,40 @@ from typing import List, Dict, Any
 class StaticAnalysisStage:
     """Class to run the static analysis stage of the validation pipeline"""
 
-    def __init__(self, output_dir: str, project_root: str):
+    def __init__(self, logs_dir: str, artifacts_dir: str, project_root: str):
         """
         Initialize the static analysis stage with where to write stage's output
         (this refers to root from which to write captured static analysis outputs),
         as well as project root where source files are found.
 
         Args:
-            output_dir: Path to directory to which this stage will write all generated artifacts
-                        and/or log files (may be existing directory or nonexisting, in which case
-                        a new directory will be created at the specified path)
+            logs_dir: Path to directory to which this stage will write all generated log files
+            artifacts_dir: Path to directory to which this stage will write all generated artifacts
             project_root: Path to project directory (where all source code/header files will be
                           found)
-            
+
             (NOTE: these may or may not be a relative path; if relative, this initializer normalizes
             the relative path to be an absolute path)
         """
         self.project_root = os.path.abspath(project_root)
 
-        self.output_dir = os.path.abspath(output_dir)
-        os.makedirs(self.output_dir, exist_ok=True)
-
-        self.logs_dir = os.path.join(self.output_dir, "logs/")
+        # Create `logs/static_analysis/` subdirectory
+        self.logs_dir = os.path.abspath(logs_dir)
         os.makedirs(self.logs_dir, exist_ok=True)
 
+        # Create `artifacts/static_analysis/` subdirectory
+        self.artifacts_dir = os.path.abspath(artifacts_dir)
+        os.makedirs(self.artifacts_dir, exist_ok=True)
+
     # ------------------------------------------------------------------------
-    #     PUBLIC METHODS 
+    #     PUBLIC METHODS
     # ------------------------------------------------------------------------
 
     def run(
         self,
         source_files: List[str],
         compile_commands: str,
-        static_analyzer:str = "clang-tidy"
+        static_analyzer: str = "clang-tidy"
     ):
         """
         Runs the static analysis stage of the validation pipeline
@@ -48,10 +49,10 @@ class StaticAnalysisStage:
                           be relative or absolute paths.
             compile_commands: A path to the `compile_commands.json` file needed by clang-tidy
             static_analyzer: Which static analyzer to use (default clang-tidy)
-        
+
         NOTE: Eventually, cppcheck will also be implemented as an option
         """
-        
+
         results = self._run_static_analysis(
             source_files=source_files,
             compile_commands=compile_commands,
@@ -63,7 +64,7 @@ class StaticAnalysisStage:
         return results
 
     # ------------------------------------------------------------------------
-    #     PRIVATE HELPERS 
+    #     PRIVATE HELPERS
     # ------------------------------------------------------------------------
 
     def _run_static_analysis(
@@ -120,9 +121,7 @@ class StaticAnalysisStage:
                     "cmd": ' '.join(cmd),
                     "success": False,
                     "stdout": "",
-                    "stderr": (
-                        f"Error: '{static_analyzer}' was not found."
-                    )
+                    "stderr": f"Error: '{static_analyzer}' was not found."
                 }
                 continue
 

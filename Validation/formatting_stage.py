@@ -6,19 +6,16 @@ from typing import List, Dict, Any
 class FormattingStage:
     """Class to run the formatting stage of the validation pipeline using clang-format."""
 
-    def __init__(self, output_dir: str):
+    def __init__(self, logs_dir: str, artifacts_dir: str):
         """
-        Initialize formatting stage with output directory for artifacts/logs.
+        Initialize formatting stage with output directories for logs and artifacts.
         """
 
-        self.output_dir = os.path.abspath(output_dir)
-        os.makedirs(self.output_dir, exist_ok=True)
-
-        self.logs_dir = os.path.join(self.output_dir, "logs/")
+        self.logs_dir = os.path.abspath(logs_dir)
         os.makedirs(self.logs_dir, exist_ok=True)
 
-        self.formatted_dir = os.path.join(self.output_dir, "formatted_files/")
-        os.makedirs(self.formatted_dir, exist_ok=True)
+        self.artifacts_dir = os.path.abspath(artifacts_dir)
+        os.makedirs(self.artifacts_dir, exist_ok=True)
 
     # ------------------------------------------------------------------------
     # PUBLIC METHODS
@@ -81,24 +78,24 @@ class FormattingStage:
                     "cmd": ' '.join(cmd),
                     "success": False,
                     "stdout": "",
-                    "stderr": (
-                        f"Error: 'clang-format' was not found."
-                    )
+                    "stderr": "Error: 'clang-format' was not found.",
+                    "formatted_output": None
                 }
+                results.append(result)
                 continue
-
 
             formatted_output_path = None
 
             # If not check-only, save formatted file output
             if not check_only and proc.returncode == 0:
                 filename = os.path.basename(file_path)
-                formatted_output_path = os.path.join(self.formatted_dir, filename)
+                formatted_output_path = os.path.join(self.artifacts_dir, filename)
 
                 with open(formatted_output_path, "w") as f:
                     f.write(proc.stdout)
 
             result = {
+                "file": file_path,
                 "cmd": " ".join(cmd),
                 "success": proc.returncode == 0,
                 "stdout": proc.stdout,
@@ -115,23 +112,29 @@ class FormattingStage:
             "results": results
         }
 
-        self.write_logs(summary)
+        self._write_logs(summary)
         return summary
 
     # ------------------------------------------------------------------------
     # PRIVATE METHODS
     # ------------------------------------------------------------------------
 
-    def write_logs(self, result: Dict[str, Any]) -> None:
-        """Write formatting output to log files."""
+    def _write_logs(self, result: Dict[str, Any]) -> None:
+        """Write per-file formatting logs + summary JSON."""
 
         os.makedirs(self.logs_dir, exist_ok=True)
 
-        log_path = os.path.join(self.logs_dir, "clang_format.log")
+        # Write per-file logs
+        for file_result in result["results"]:
+            base = os.path.splitext(os.path.basename(file_result["file"]))[0]
+            log_path = os.path.join(self.logs_dir, f"format_{base}.log")
+
+            with open(log_path, "w") as f:
+                for key, value in file_result.items():
+                    value = value.replace(" ", "\n\t") if key == "cmd" else value
+                    f.write(f"{key}: {value}\n\n")
+
+        # Write summary JSON
         summary_path = os.path.join(self.logs_dir, "summary.json")
-
-        with open(log_path, "w") as f:
-            json.dump(result, f, indent=4)
-
         with open(summary_path, "w") as f:
             json.dump(result, f, indent=4)

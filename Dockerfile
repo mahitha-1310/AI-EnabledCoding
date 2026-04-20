@@ -8,10 +8,13 @@ RUN apt-get update && \
         clang-tidy \
         clang-format \
         llvm \
+        gcc \
         valgrind \
         llvm-dev \
         libclang-dev \
-        ca-certificates && \
+        ca-certificates \
+        make \
+        bear && \
     rm -rf /var/lib/apt/lists/*
 
 # Install uv
@@ -37,6 +40,9 @@ EXPOSE 8501
 
 # Define environment variable
 ENV NAME=World
+
+# Disable Python output buffering so print() calls appear immediately in Docker logs
+ENV PYTHONUNBUFFERED=1
 
 # Run streamlit when the container launches
 CMD ["uv", "run", "streamlit", "run", "home.py", "--server.port=8501", "--server.address=0.0.0.0"]

@@ -50,20 +50,17 @@ class Pipeline():
     ### ROUTERS ###
 
     def grading_router(self, state: State):
-        if grade(output_path=PATH.output_path):
+        if grade(output_path=PATH.testing_path):
             return "pass"
-        
-        # TODO: Detemrine how unit test successes/errors/crashes are handled!
 
-        if self.config["retry_prompt"] and state["attempts_left"] == 0:
-            more_retries = request_retry(num_attempts_left=self.config["return_anyway_after"])
-            state["attempts_left"] = more_retries
-        
-        if not self.config["retry_prompt"] or state["attempts_left"] == 0:
+        # TODO: Determine how unit test successes/errors/crashes are handled!
+
+        attempts_left = state.get("attempts_left", 0)
+
+        if not self.config["retry_prompt"] or attempts_left == 0:
             print("[WARNING]: Code is not guaranteed to be functional.")
             return "insufficient"
-        
-        state["attempts_left"] -= 1
+
         return "fail"
 
     def post_converse_router(self, state: State):
@@ -89,6 +86,8 @@ class Pipeline():
             tool_args = tool_call["args"]
             tool_call_id = tool_call["id"]
 
+            print(f"[Pipeline] Executing tool: {tool_name}")
+
             tool_fn = TOOLS.get(tool_name)
             if tool_fn is None:
                 result = f"Error: tool '{tool_name}' not found."
@@ -106,6 +105,7 @@ class Pipeline():
         return {"messages": tool_messages}
 
     def update_node(self, state: State):
+        print("[Pipeline] Updating project structure...")
         project_structure = list_dir(PATH.editor_path)
         tool_message = str.format(
             PATH.structure_message,
@@ -117,15 +117,24 @@ class Pipeline():
         return {"structure": project_structure, "messages": trimmed + [SystemMessage(content=tool_message)]}
 
     def validate_node(self, state: State):
-        if state.get("attempts_left") is None:
-            state["attempts_left"] = self.config["return_anyway_after"]
+        print("[Pipeline] Running validation pipeline...")
+
+        # Initialize attempts counter on first validation, then decrement on each retry
+        attempts_left = state.get("attempts_left")
+        if attempts_left is None:
+            attempts_left = self.config["return_anyway_after"]
+        else:
+            attempts_left -= 1
 
         results = self.validator.run()
-        print(results)
 
-        return {"validations": state.get("validations", []) + [results]}
-    
+        return {
+            "attempts_left": attempts_left,
+            "validations": state.get("validations", []) + [results]
+        }
+
     def summarize_node(self, state: State):
+        print("[Pipeline] Summarizing conversation history...")
         messages = state["messages"]
 
         summarize = messages[:-self.config["messages_to_keep"]]
@@ -142,19 +151,20 @@ class Pipeline():
         summary_message = SystemMessage(
             content=f"[Conversation summary so far]: {summary.content}"
         )
-    
-        return {"summaries": [summary_message] + preserve}
-    
-    def sendback_node(self, state: State):
 
+        return {"summaries": [summary_message] + preserve}
+
+    def sendback_node(self, state: State):
+        print("[Pipeline] Sending validation feedback back to model...")
         # TODO: Obtain relevant validation logs/jsons!
-        summary_json = json.dumps(state.get("success", [{}])[-1])
+        summary_json = json.dumps(state.get("validations", [{}])[-1])
 
         response = self.model.invoke([HumanMessage(content=PATH.feedback_message.format(summary=summary_json))])
 
         return {"messages": [SystemMessage(content=response.content)]}
 
     def converse_node(self, state: State):
+        print("[Pipeline] Model is generating a response...")
         history = state.get("summarized_messages") or state["messages"]
         response = self.model.invoke([SystemMessage(content=PATH.system_message)] + history)
         return {"messages": [response]}

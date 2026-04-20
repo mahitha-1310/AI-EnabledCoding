@@ -52,11 +52,17 @@ class _PathData:
         self.prompts_path = "prompts"
 
         self.input_path =   os.path.join(self.workshop_path, "input")
-        self.test_path =    os.path.join(self.workshop_path, "test")  
+        self.test_path =    os.path.join(self.workshop_path, "test")
         self.editor_path =  os.path.join(self.workshop_path, "editor")
         self.testing_path = os.path.join(self.workshop_path, "testing")
         self.output_path =  os.path.join(self.workshop_path, "output")
         self.result_path =  os.path.join(self.workshop_path, "result")
+
+        for path in [
+            self.input_path, self.test_path, self.editor_path,
+            self.testing_path, self.output_path, self.result_path
+        ]:
+            os.makedirs(project_path(path), exist_ok=True)
 
         SYSTEM_PROMPT =        os.path.join(self.prompts_path, "system_prompt.md")
         FEEDBACK_PROMPT =      os.path.join(self.prompts_path, "feedback_prompt.md")
@@ -202,21 +208,21 @@ def list_dir(directory: str, max_depth: int | None = None) -> Dict[str, Any]:
     }
 
 def grade(output_path: Path) -> bool:
-    if output_path is not Path:
+    if not isinstance(output_path, Path):
         output_path = Path(output_path)
     assert_exists(output_path)
 
     try:
         for stage, functions in ANALYSIS.items():
-            path = output_path / stage / PATH.summary_path
+            path = output_path / "logs" / stage / "summary.json"
             with open(path, "r", encoding="utf-8") as file:
-                success = functions["function"].invoke(json.load(file))
+                success = functions["function"](json.load(file))
                 if not success:
                     accept_program = False
                     if "message" in functions:
-                        accept_program = functions["fail_case"].invoke(functions["message"])
+                        accept_program = functions["fail_case"](functions["message"])
                     else:
-                        accept_program = functions["fail_case"].invoke()
+                        accept_program = functions["fail_case"](None)
 
                     if not accept_program:
                         return False

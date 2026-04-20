@@ -1,17 +1,12 @@
 def _test_comp(json: dict):
-    # Is there an executable path?
-    if not json["executable_path"]:
+    # Did `bear -- make` succeed?
+    if not json.get("make_output", {}).get("success"):
         return False
-    
-    # Was linking successful?
-    elif not json["link_output"]["success"]:
+
+    # Was an executable produced?
+    if not json.get("executable_path"):
         return False
-    
-    # Did every c file compile?
-    for file_output in json["file_outputs"].items():
-        if not file_output["success"]:
-            return False
-    
+
     # Success!
     return True
 
@@ -19,12 +14,12 @@ def _test_stan(json: dict):
     # Was static analysis considered successful in general?
     if not json["overall_success"]:
         return False
-    
-    # Did every c file compile?
-    for file_output in json["file_outputs"].items():
+
+    # Did every file pass individually?
+    for file_output in json["file_outputs"].values():
         if not file_output["success"]:
             return False
-    
+
     # Success!
     return True
 
