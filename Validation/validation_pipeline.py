@@ -80,7 +80,7 @@ class ValidationPipeline:
             header_files=h_files,
             include_dirs=include_dirs,
             compiler=self.config.list_item("compiler"),
-            build_tool=self.config.list_item("build_tool")
+            build_tool=None # self.config.list_item("build_tool")
         )
 
         # Stage 2: Static Analysis
@@ -101,13 +101,13 @@ class ValidationPipeline:
         else:
             results["dynamic_analysis"] = self.dynamic_analysis.run(
                 executable_path=exe_path,
-                flags=self.config["flags"].split()
+                flags=self.config.get("flags").split()
             )
 
         # Stage 4: Formatting
         results["formatting"] = self.formatting_stage.run(
             source_files=c_files,
-            check_only=self.config["check_only"],
+            check_only=self.config.get("check_only"),
             style=self.config.list_item("style")
         )
 

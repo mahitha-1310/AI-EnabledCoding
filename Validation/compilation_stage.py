@@ -291,6 +291,8 @@ class CompilationStage:
                      from an attempt to compile and link `.c` files
         """
 
+        print(results)
+
         os.makedirs(self.logs_dir, exist_ok=True)
 
         # ====================== STEP 1 ======================

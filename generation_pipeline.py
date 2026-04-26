@@ -13,11 +13,11 @@ from tools import *
 from utils import *
 
 class State(TypedDict):
-        messages: Annotated[list[BaseMessage], add_messages]
-        summaries: list[BaseMessage]
-        structure: Dict[str, Any]
-        validations: list[Dict[str, Any]]
-        attempts_left: int
+    messages: Annotated[list[BaseMessage], add_messages]
+    summaries: list[BaseMessage]
+    structure: Dict[str, Any]
+    validations: list[Dict[str, Any]]
+    attempts_left: int
 
 class Pipeline():
     def __init__(self):
@@ -55,11 +55,11 @@ class Pipeline():
         
         # TODO: Detemrine how unit test successes/errors/crashes are handled!
 
-        if self.config["retry_prompt"] and state["attempts_left"] == 0:
-            more_retries = request_retry(num_attempts_left=self.config["return_anyway_after"])
-            state["attempts_left"] = more_retries
+        if self.config.get("retry_prompt") and state["attempts_left"] == 0:
+            request_retry(num_attempts_left=self.config.get("return_anyway_after"))
+            return "retry"
         
-        if not self.config["retry_prompt"] or state["attempts_left"] == 0:
+        if not self.config.get("retry_prompt") or state["attempts_left"] == 0:
             print("[WARNING]: Code is not guaranteed to be functional.")
             return "insufficient"
         
@@ -73,7 +73,7 @@ class Pipeline():
         return "validate"
     
     def summarization_router(self, state: State):
-        return "summarize" if len(state["messages"]) > self.config["summarize_after"] else "converse"
+        return "summarize" if len(state["messages"]) > self.config.get("summarize_after") else "converse"
 
 
     ###############
@@ -112,13 +112,13 @@ class Pipeline():
             directory_tree=json.dumps(project_structure["structure"], indent=4)
         )
 
-        trimmed = state["messages"][-self.config["summarize_after"]:]
+        trimmed = state["messages"][-self.config.get("summarize_after"):]
 
         return {"structure": project_structure, "messages": trimmed + [SystemMessage(content=tool_message)]}
 
     def validate_node(self, state: State):
         if state.get("attempts_left") is None:
-            state["attempts_left"] = self.config["return_anyway_after"]
+            state["attempts_left"] = self.config.get("return_anyway_after")
 
         results = self.validator.run()
         print(results)
@@ -128,8 +128,8 @@ class Pipeline():
     def summarize_node(self, state: State):
         messages = state["messages"]
 
-        summarize = messages[:-self.config["messages_to_keep"]]
-        preserve  = messages[-self.config["messages_to_keep"]:]
+        summarize = messages[:-self.config.get("messages_to_keep")]
+        preserve  = messages[-self.config.get("messages_to_keep"):]
 
         history = "\n".join(
             f"{msg.__class__.__name__}: {msg.content}"
@@ -155,7 +155,7 @@ class Pipeline():
         return {"messages": [SystemMessage(content=response.content)]}
 
     def converse_node(self, state: State):
-        history = state.get("summarized_messages") or state["messages"]
+        history = state.get("summaries") or state["messages"]
         response = self.model.invoke([SystemMessage(content=PATH.system_message)] + history)
         return {"messages": [response]}
 
@@ -191,7 +191,7 @@ class Pipeline():
         graph_builder.add_conditional_edges("converse", self.post_converse_router, {"tools": "tools", "validate": "validate"})
         graph_builder.add_edge("tools", "update")
         # Once LLM thinks code is ready, it can send to validation pipeline
-        graph_builder.add_conditional_edges("validate", self.grading_router, {"pass": END, "fail": "sendback", "insufficient": END})
+        graph_builder.add_conditional_edges("validate", self.grading_router, {"pass": END, "fail": "sendback", "insufficient": END, "retry": "sendback"})
 
         return graph_builder.compile(checkpointer=checkpointer)
 
@@ -200,8 +200,14 @@ class Pipeline():
         if not self.graph:
             self.build(MemorySaver())
 
-        response = self.graph.stream(
+        state = None
+        for snapshot in self.graph.stream(
             {"messages": [HumanMessage(content=user_input)]},
             {"configurable": {"thread_id": user_id}}
-        )
-        yield response['messages'][-1].content
+        ):
+            state = snapshot
+        
+        if state:
+            last_node_output = list(state.values())[-1]
+            last_message = last_node_output["messages"][-1]
+            yield last_message.content
