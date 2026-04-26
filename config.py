@@ -5,7 +5,8 @@ _MAPPINGS = {
     bool: st.checkbox,
     float: st.number_input,
     str: st.text_input,
-    list: st.selectbox
+    list: st.selectbox,
+    "multiselect": st.multiselect
 }
 
 def iter_list(item_list: list[Any], index: int = 0) -> dict[str, Any]:
@@ -15,6 +16,15 @@ def iter_list(item_list: list[Any], index: int = 0) -> dict[str, Any]:
     return {
         "options": item_list,
         "index": index
+    }
+
+def iter_multilist(item_list: list[Any], defaults: list[Any]) -> dict[str, Any]:
+    if not all(d in item_list for d in defaults):
+        raise ValueError("All defaults must be present in item_list")
+
+    return {
+        "options": item_list,
+        "default": defaults
     }
 
 class HasaimConfiguration():
@@ -73,6 +83,10 @@ class HasaimConfiguration():
     def list_item(self, config_name: str) -> Any:
         return self._config[config_name]["options"][self._config[config_name]["index"]]
 
+    def list_items(self, config_name: str) -> list[Any]:
+        """Return the current selection from a multiselect config value."""
+        return self._config[config_name]["default"]
+
     def display(self, key: str, text: str | None = None, override_type: Any = None, **kwargs) -> Any:
         if key not in self._config:
             raise KeyError(f"Config value {key} not found in config")
@@ -84,7 +98,11 @@ class HasaimConfiguration():
             value = float(value)
             kwargs["format"] = "%0f"
  
-        if override_type is list or isinstance(value, dict):
+        if override_type == "multiselect" or (isinstance(value, dict) and "default" in value):
+            if "options" not in kwargs:
+                kwargs["options"] = value["options"]
+                kwargs["default"] = value["default"]
+        elif override_type is list or isinstance(value, dict):
             if "options" not in kwargs:
                 kwargs["options"] = value["options"]
                 kwargs["index"]   = value["index"]
@@ -94,6 +112,21 @@ class HasaimConfiguration():
         result = self._get_mapping(key=key, label=label, override_type=override_type, **kwargs)
         if text:
             self._add_description(text)
+
+        # Write the widget's current value back into the config so accessors reflect the UI state
+        if override_type == "multiselect" or (isinstance(self._config[key], dict) and "default" in self._config[key]):
+            self._config[key]["default"] = result
+        elif override_type is list or (isinstance(self._config[key], dict) and "index" in self._config[key]):
+            options = self._config[key]["options"]
+            self._config[key]["index"] = options.index(result) if result in options else self._config[key]["index"]
+        else:
+            # Preserve the original type (e.g. int config values rendered as float by st.number_input)
+            orig_type = type(self._config[key])
+            try:
+                self._config[key] = orig_type(result)
+            except (TypeError, ValueError):
+                self._config[key] = result
+
         return result
 
     def _get_mapping(self, key: str, label: str, override_type: Any = None, **kwargs) -> Any:

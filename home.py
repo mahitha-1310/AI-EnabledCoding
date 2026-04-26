@@ -20,7 +20,7 @@ def stream(response, delay: float):
 def chatbot():
     if 'messages' not in st.session_state:
         st.session_state.messages = []
-    with st.container(height=700):
+    with st.container(height=550):
         for message in st.session_state.messages:
             st.chat_message(message['role']).markdown(message['content'])
         prompt = st.chat_input(CHATBOT_MESSAGE)
@@ -33,19 +33,24 @@ def chatbot():
             transfer(source=PATH.input_path, destination=PATH.editor_path)
             
             # Produce response
-            with st.chat_message('assistant'):
-                with st.spinner("Working on it... (check terminal for live progress)"):
-                    response = pipeline.run(
-                        user_input=prompt,
-                        user_id=user_id
-                    )
-                st.write_stream(stream=stream(response=response, delay=0.01))
-            
-            clear_directory(PATH.input_path)
-            transfer(source=PATH.editor_path, destination=PATH.output_path)
-            transfer(source=PATH.testing_path, destination=PATH.output_path)
+            response = None
+            try:
+                with st.chat_message('assistant'):
+                    with st.spinner("Working on it... (check terminal for live progress)", show_time=True):
+                        response = pipeline.run(
+                            user_input=prompt,
+                            user_id=user_id
+                        )
+                    st.write_stream(stream=stream(response=response, delay=0.005))
+            except Exception as e:
+                st.error(f"Pipeline error: {e}")
+            finally:
+                clear_directory(PATH.input_path)
+                transfer(source=PATH.editor_path, destination=PATH.output_path)
+                transfer(source=PATH.testing_path, destination=PATH.output_path)
 
-            st.session_state.messages.append({'role': 'assistant', 'content': response})
+            if response:
+                st.session_state.messages.append({'role': 'assistant', 'content': response})
             st.rerun()
 
 def codebase_download():
@@ -97,10 +102,48 @@ def customize_pipeline(pipeline: Pipeline) -> None:
 
     def customize_validator():
 
-        vc.display("static_analyzer", "Choose a code analyzer for static analysis step.", override_type=list)
-        vc.display("flags", "Flags to use alongside the execution command.")
-        vc.display("check_only", "Should the validator only check the code and make no formatting modifications?", override_type=bool)
-        vc.display("style", "Formatting standard the format linter will use.", override_type=list)
+        st.markdown("**Static Analyzers**")
+        current = vc.list_items("static_analyzer")
+        use_clang    = st.checkbox("clang-tidy", value="clang-tidy" in current, key="static_analyzer_clang_tidy",
+                                   help="Runs clang-tidy on each source file using the project's compile_commands.json. Catches style violations, bug-prone patterns, and modernization opportunities.")
+        use_cppcheck = st.checkbox("cppcheck",   value="cppcheck"   in current, key="static_analyzer_cppcheck",
+                                   help="Runs cppcheck on the whole project at once. Detects undefined behavior, memory issues, and style problems. Complements clang-tidy with different heuristics.")
+        selected = [a for a, on in [("clang-tidy", use_clang), ("cppcheck", use_cppcheck)] if on]
+        if selected:
+            vc["static_analyzer"]["default"] = selected
+        else:
+            vc["static_analyzer"]["default"] = ["clang-tidy"]
+            st.warning("At least one analyzer must be selected. Defaulting to clang-tidy.")
+        st.caption("Choose one or both analyzers for the static analysis step.")
+
+        st.divider()
+
+        st.markdown("**Dynamic Analysis**")
+        current_tools = vc.list_items("tool")
+        use_memcheck   = st.checkbox("memcheck",   value="memcheck"   in current_tools, key="valgrind_memcheck",
+                                     help="Detects memory errors and leaks. The most commonly used Valgrind tool.")
+        use_helgrind   = st.checkbox("helgrind",   value="helgrind"   in current_tools, key="valgrind_helgrind",
+                                     help="Detects threading errors such as race conditions and misuse of POSIX pthreads.")
+        use_massif     = st.checkbox("massif",     value="massif"     in current_tools, key="valgrind_massif",
+                                     help="Profiles heap memory usage over time.")
+        use_callgrind  = st.checkbox("callgrind",  value="callgrind"  in current_tools, key="valgrind_callgrind",
+                                     help="Profiles call graphs and cache/branch prediction behavior.")
+        selected_tools = [t for t, on in [("memcheck", use_memcheck), ("helgrind", use_helgrind),
+                                          ("massif", use_massif), ("callgrind", use_callgrind)] if on]
+        if selected_tools:
+            vc["tool"]["default"] = selected_tools
+        else:
+            vc["tool"]["default"] = ["memcheck"]
+            st.warning("At least one Valgrind tool must be selected. Defaulting to memcheck.")
+        st.caption("Choose one or more Valgrind tools to run during dynamic analysis.")
+
+        vc.display("program_args", help="Command-line arguments passed to the compiled executable when run under Valgrind. Leave blank if the program takes no arguments.", placeholder="e.g. --input file.txt --verbose")
+
+        st.divider()
+
+        st.markdown("**Formatting**")
+        vc.display("check_only", override_type=bool, help="When enabled, clang-format checks formatting but makes no changes to source files. Disable to have clang-format automatically reformat the code.")
+        vc.display("style", override_type=list, help="The clang-format style guide used to check or reformat the code. LLVM and Google are the most commonly used for C projects.")
     
     chat, valid = st.tabs(["Chatbot", "Validator"])
 

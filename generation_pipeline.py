@@ -1,6 +1,7 @@
 import os, json
 from typing_extensions import TypedDict
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from openai import APITimeoutError
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_openai import ChatOpenAI
@@ -34,8 +35,11 @@ class Pipeline():
         model_temperature = float(os.getenv("TEMPERATURE"))
         model_tools = list(TOOLS.values())
         self.model = ChatOpenAI(
-            model=self._model_name, 
-            temperature=model_temperature
+            model=self._model_name,
+            temperature=model_temperature,
+            base_url=os.getenv("OPENAI_API_BASE"),
+            timeout=int(os.getenv("MODEL_TIMEOUT", 120)),
+            max_retries=0
         ).bind_tools(model_tools)
 
         # Validation init
@@ -166,7 +170,11 @@ class Pipeline():
     def converse_node(self, state: State):
         print("[Pipeline] Model is generating a response...")
         history = state.get("summarized_messages") or state["messages"]
-        response = self.model.invoke([SystemMessage(content=PATH.system_message)] + history)
+        try:
+            response = self.model.invoke([SystemMessage(content=PATH.system_message)] + history)
+        except APITimeoutError:
+            print("[Pipeline] WARNING: Model request timed out.")
+            response = AIMessage(content="[Error: the model timed out and could not produce a response. Please try again.]")
         return {"messages": [response]}
 
     #############
@@ -215,4 +223,19 @@ class Pipeline():
             {"configurable": {"thread_id": user_id}}
         )
 
-        return response['messages'][-1].content
+        last = response['messages'][-1]
+        if last.content:
+            return last.content
+
+        # Model returned no content — synthesize a summary from validation results
+        validations = response.get("validations", [])
+        if validations:
+            v = validations[-1]
+            lines = ["(The model produced no text response. Validation summary:)"]
+            for stage, result in v.items():
+                if isinstance(result, dict):
+                    ok = result.get("overall_success", result.get("success", "?"))
+                    lines.append(f"  {stage}: {'OK' if ok else 'FAILED'}")
+            return "\n".join(lines)
+
+        return "(No response generated.)"

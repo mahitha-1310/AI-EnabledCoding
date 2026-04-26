@@ -2,6 +2,7 @@ import os
 import subprocess
 import json
 from typing import List, Dict, Any
+from utils import fmt_field
 
 class DynamicAnalysisStage:
     """Class to run the dynamic analysis stage of the validation pipeline"""
@@ -26,58 +27,70 @@ class DynamicAnalysisStage:
     #     PUBLIC METHODS
     # ------------------------------------------------------------------------
 
-    def run(self, executable_path: str, flags: List[str] = None) -> Dict[str, Any]:
+    def run(self, executable_path: str, tools: List[str] = None, flags: List[str] = None) -> Dict[str, Any]:
         """
-        Run dynamic analysis on the executable.
+        Run one or more Valgrind tools on the executable.
 
         Args:
             executable_path: Path to the compiled executable.
-            flags: Additional flags for the dynamic analysis tool.
+            tools: Valgrind tools to run. Supported: memcheck, helgrind, massif, callgrind.
+                   Defaults to ["memcheck"].
+            flags: Command-line arguments passed to the executable.
 
         Returns:
-            A dictionary containing the results of the dynamic analysis.
+            {
+                "<tool>": { "cmd": "...", "success": bool, "stdout": "...", "stderr": "..." },
+                ...
+                "overall_success": bool   # True only if every tool passed
+            }
         """
         if not executable_path:
-            return {"success": False, "error": "Executable path is None."}
+            return {"overall_success": False, "error": "Executable path is None."}
+
+        if not tools:
+            tools = ["memcheck"]
 
         executable_path = os.path.abspath(executable_path)
+        tool_results: Dict[str, Any] = {}
 
-        cmd = ["valgrind", executable_path] + (flags or [])
+        for tool in tools:
+            cmd = ["valgrind", f"--tool={tool}", executable_path] + (flags or [])
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            tool_results[tool] = {
+                "cmd": " ".join(cmd),
+                "success": proc.returncode == 0,
+                "stdout": proc.stdout,
+                "stderr": proc.stderr
+            }
 
-        proc = subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        )
+        overall = all(r["success"] for r in tool_results.values())
+        results = {**tool_results, "overall_success": overall}
 
-        result = {
-            "cmd": " ".join(cmd),
-            "success": proc.returncode == 0,
-            "stdout": proc.stdout,
-            "stderr": proc.stderr
-        }
+        self._write_logs(results)
 
-        self._write_logs(result)
-
-        return result
+        return results
 
     # ------------------------------------------------------------------------
     #     PRIVATE METHODS
     # ------------------------------------------------------------------------
 
     def _write_logs(self, result: Dict[str, Any]) -> None:
-        """Write Valgrind output to log files"""
+        """Write Valgrind output to per-tool log files"""
 
         os.makedirs(self.logs_dir, exist_ok=True)
 
-        valgrind_path = os.path.join(self.logs_dir, "valgrind.log")
+        for key, value in result.items():
+            if key == "overall_success":
+                continue
+
+            tool_dir = os.path.join(self.logs_dir, key)
+            os.makedirs(tool_dir, exist_ok=True)
+
+            valgrind_path = os.path.join(tool_dir, "valgrind.log")
+            with open(valgrind_path, "w") as f:
+                for field, field_val in value.items():
+                    f.write(fmt_field(field, field_val))
+
         summary_path = os.path.join(self.logs_dir, "summary.json")
-
-        with open(valgrind_path, "w") as f:
-            for key, value in result.items():
-                value = value.replace(" ", "\n\t") if key == "cmd" else value
-                f.write(f"{key}: {value}\n\n")
-
         with open(summary_path, "w") as f:
             json.dump(result, f, indent=4)

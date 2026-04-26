@@ -7,6 +7,7 @@ RUN apt-get update && \
         clang \
         clang-tidy \
         clang-format \
+        cppcheck \
         llvm \
         gcc \
         valgrind \

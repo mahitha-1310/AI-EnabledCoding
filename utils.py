@@ -11,6 +11,26 @@ import uuid
 import io
 import os
 
+_STREAM_KEYS = {"stdout", "stderr"}
+
+def fmt_field(key: str, value: Any) -> str:
+    """Format a single log field for human-readable .log files.
+
+    - cmd:    each argument on its own indented line
+    - stdout/stderr: content on next line, wrapped in --- dividers
+    - other:  key: value on one line
+    """
+    value = str(value) if not isinstance(value, str) else value
+    if key == "cmd":
+        args = "  " + "\n  ".join(value.split())
+        return f"cmd:\n{args}\n\n"
+    elif key in _STREAM_KEYS:
+        content = value.strip()
+        body = f"\n{'-'*60}\n{content}\n{'-'*60}\n" if content else "\n(empty)\n"
+        return f"{key}:{body}\n"
+    else:
+        return f"{key}: {value}\n\n"
+
 def assert_exists(path: Path) -> None:
     if not path.exists():
         raise FileNotFoundError(f"Path not found: {path}")

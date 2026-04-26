@@ -3,8 +3,9 @@ import re
 import subprocess
 import json
 from typing import List, Dict, Any, Optional
+from utils import fmt_field
 
-MAKE_COMMAND = ["bear", "--", "make"]
+MAKE_COMMAND = ["bear", "--", "make", "-B"]  # -B forces full rebuild so bear always captures compile commands
 MAKEFILE_ALIASES = ["Makefile", "makefile", "GNUmakefile"]
 
 class CompilationStage:
@@ -169,9 +170,9 @@ class CompilationStage:
         make_log_path = os.path.join(self.logs_dir, "make_output.log")
         with open(make_log_path, "w") as f:
             for key, value in results["make_output"].items():
-                f.write(f"{key}: {value}\n\n")
-            f.write(f"compile_commands_path: {results['compile_commands_path']}\n\n")
-            f.write(f"executable_path: {results['executable_path']}\n\n")
+                f.write(fmt_field(key, value))
+            f.write(fmt_field("compile_commands_path", results["compile_commands_path"]))
+            f.write(fmt_field("executable_path", results["executable_path"]))
 
         # ====================== STEP 2 ======================
         # Write a summary JSON dump log

@@ -11,21 +11,24 @@ def _test_comp(json: dict):
     return True
 
 def _test_stan(json: dict):
-    # Was static analysis considered successful in general?
+    # Was static analysis considered successful across all analyzers?
     if not json["overall_success"]:
         return False
 
-    # Did every file pass individually?
-    for file_output in json["file_outputs"].values():
-        if not file_output["success"]:
-            return False
+    # Did every file pass for every analyzer?
+    for key, value in json.items():
+        if key == "overall_success":
+            continue
+        for file_output in value["file_outputs"].values():
+            if not file_output["success"]:
+                return False
 
     # Success!
     return True
 
 def _test_dyan(json: dict):
     # Was dynamic analysis considered successful in general?
-    return json["success"]
+    return json["overall_success"]
 
 def _test_frmt(json: dict):
     # Was formatting considered successful in general?

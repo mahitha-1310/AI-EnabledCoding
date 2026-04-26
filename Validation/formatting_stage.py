@@ -2,6 +2,7 @@ import os
 import subprocess
 import json
 from typing import List, Dict, Any
+from utils import fmt_field
 
 class FormattingStage:
     """Class to run the formatting stage of the validation pipeline using clang-format."""
@@ -131,8 +132,7 @@ class FormattingStage:
 
             with open(log_path, "w") as f:
                 for key, value in file_result.items():
-                    value = value.replace(" ", "\n\t") if key == "cmd" else value
-                    f.write(f"{key}: {value}\n\n")
+                    f.write(fmt_field(key, value))
 
         # Write summary JSON
         summary_path = os.path.join(self.logs_dir, "summary.json")
