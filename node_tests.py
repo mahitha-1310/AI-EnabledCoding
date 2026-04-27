@@ -2,9 +2,8 @@ from langchain_core.messages import HumanMessage, ToolMessage
 from unittest.mock import MagicMock, patch
 from generation_pipeline import Pipeline
 from openai import APITimeoutError
-import tempfile, os
 from tools import *
-import pytest
+import tempfile, os, pytest
 
 class TestGenerationPipelineInstance:
     def __init__(self):

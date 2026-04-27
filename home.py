@@ -7,6 +7,7 @@ import os
 st.set_page_config(layout="wide", page_title="HASAIM")
 
 CHATBOT_MESSAGE = "What to do, what to do..."
+HEIGHT = 550
 
 @st.cache_resource
 def get_pipeline():
@@ -20,7 +21,7 @@ def stream(response, delay: float):
 def chatbot():
     if 'messages' not in st.session_state:
         st.session_state.messages = []
-    with st.container():
+    with st.container(height=HEIGHT):
         for message in st.session_state.messages:
             st.chat_message(message['role']).markdown(message['content'])
         prompt = st.chat_input(CHATBOT_MESSAGE)
@@ -96,10 +97,12 @@ def customize_pipeline(pipeline: Pipeline) -> None:
 
     def customize_chatbot():
         numargs = {"step":1.0, "min_value":1.0, "format":"%0f"}
+        ragargs = {"step":1.0, "min_value":0.0, "format":"%0f"}
 
         pc.display("summarize_after", "The amount of messages that will cause the LLM to summarize.", **numargs)
         pc.display("messages_to_keep", "The amount of messages that won't be summarized.", **numargs)
         pc.display("return_anyway_after", "The amount of attempts the LLM is allowed to have before a forced return.", **numargs)
+        pc.display("retrieval_chunks", "The amount of RAG chunks that will be used in genrating a response. Set to 0 to disable.", **ragargs)
         pc.display("retry_prompt", "Should the user be asked if they want to continue prompting?", override_type=bool)
 
     def customize_validator():

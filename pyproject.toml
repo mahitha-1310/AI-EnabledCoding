@@ -16,6 +16,7 @@ dependencies = [
     "langgraph>=1.0.9",
     "langchain-core>=1.2.10",
     "pytest>=9.0.3",
+    "langchain>=1.2.15",
 ]
 
 [build-system]

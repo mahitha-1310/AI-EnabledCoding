@@ -4,11 +4,12 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from openai import APITimeoutError
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from Validation.validation_pipeline import ValidationPipeline
 from langgraph.graph.message import add_messages
 from typing import Annotated
 from config import HasaimConfiguration
+from RAG.rag_orchestrator import RAGRetriever
 
 from tools import *
 from utils import *
@@ -28,6 +29,7 @@ class Pipeline():
             "summarize_after": 20,
             "messages_to_keep": 10,
             "return_anyway_after": 3,
+            "retrieval_chunks": 6,
             "retry_prompt": True
         })
 
@@ -42,11 +44,13 @@ class Pipeline():
             max_retries=0
         ).bind_tools(model_tools)
 
-        # Validation init
-        self.validator = ValidationPipeline(output_dir=PATH.testing_path, source_dir=PATH.editor_path)
         # Pipeline init
         self.graph = self.build(MemorySaver())
         print(self.graph.get_graph().draw_ascii())
+        # Validation init
+        self.validator = ValidationPipeline(output_dir=PATH.testing_path, source_dir=PATH.editor_path)
+        # RAG init
+        self.rag = RAGRetriever()
     
     def get_model_name(self):
         return self._model_name
@@ -167,9 +171,11 @@ class Pipeline():
 
     def converse_node(self, state: State):
         print("[Pipeline] Model is generating a response...")
-        history = state.get("summarized_messages") or state["messages"]
         try:
-            response = self.model.invoke([SystemMessage(content=PATH.system_message)] + history)
+            history  = state.get("summarized_messages") or state["messages"]
+            num_chunks = self.config.get("retrieval_chunks")
+            rag_data = self.rag.retrieve(query=history, k=num_chunks) if num_chunks > 0 else {}
+            response = self.model.invoke([SystemMessage(content=PATH.system_message.format(rag_data))] + history)
         except APITimeoutError:
             print("[Pipeline] WARNING: Model request timed out.")
             response = AIMessage(content="[Error: the model timed out and could not produce a response. Please try again.]")
