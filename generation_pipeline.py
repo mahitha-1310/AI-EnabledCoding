@@ -9,7 +9,7 @@ from Validation.validation_pipeline import ValidationPipeline
 from langgraph.graph.message import add_messages
 from typing import Annotated
 from config import HasaimConfiguration
-from RAG.rag_orchestrator import RAGRetriever
+from rag.retriever import RAGRetriever
 
 from tools import *
 from utils import *
