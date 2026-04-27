@@ -20,7 +20,7 @@ def stream(response, delay: float):
 def chatbot():
     if 'messages' not in st.session_state:
         st.session_state.messages = []
-    with st.container(height=550):
+    with st.container():
         for message in st.session_state.messages:
             st.chat_message(message['role']).markdown(message['content'])
         prompt = st.chat_input(CHATBOT_MESSAGE)
@@ -54,6 +54,8 @@ def chatbot():
             st.rerun()
 
 def codebase_download():
+    if not os.path.exists(PATH.output_path):
+        os.makedirs(PATH.output_path, exist_ok=True)
     disable = not os.listdir(PATH.output_path)
     text = "Nothing to Download" if disable else "Download Codebase"
     if st.button(text, disabled=disable, use_container_width=True):
@@ -176,8 +178,9 @@ def file_uploader(path: str, label: str):
 
         # Save the file to pipeline.input_path
         file_path = os.path.join(path, name)
+        os.makedirs(path, exist_ok=True)  # creates the dir if it doesn't exist
         with open(file_path, "wb") as f:
-            f.write(bytes_data)
+            f.write(uploaded_file.getbuffer())
 
 if __name__ == "__main__":
 

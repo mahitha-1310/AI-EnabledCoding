@@ -14,11 +14,11 @@ from tools import *
 from utils import *
 
 class State(TypedDict):
-        messages: Annotated[list[BaseMessage], add_messages]
-        summaries: list[BaseMessage]
-        structure: Dict[str, Any]
-        validations: list[Dict[str, Any]]
-        attempts_left: int
+    messages: Annotated[list[BaseMessage], add_messages]
+    summaries: list[BaseMessage]
+    structure: Dict[str, Any]
+    validations: list[Dict[str, Any]]
+    attempts_left: int
 
 class Pipeline():
     def __init__(self):
@@ -56,8 +56,6 @@ class Pipeline():
     def grading_router(self, state: State):
         if grade(output_path=PATH.testing_path):
             return "pass"
-
-        # TODO: Determine how unit test successes/errors/crashes are handled!
 
         attempts_left = state.get("attempts_left", 0)
 
