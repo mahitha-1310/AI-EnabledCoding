@@ -4,12 +4,12 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from openai import APITimeoutError
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_openai import ChatOpenAI
 from Validation.validation_pipeline import ValidationPipeline
 from langgraph.graph.message import add_messages
 from typing import Annotated
 from config import HasaimConfiguration
-from RAG.rag_orchestrator import RAGRetriever
+from rag.retriever import RAGRetriever
 
 from tools import *
 from utils import *
