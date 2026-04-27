@@ -1,5 +1,6 @@
-# Chroma
-.chroma/chroma.sqlite3
+# ChromaDB vector store
+.chroma/
+chroma_db/
 
 # Logging
 llm_queries.log
