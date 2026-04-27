@@ -1,7 +1,7 @@
 from typing import List, Dict, Any
 
-from vector_store import get_collection
-from embedder import embed_query
+from rag.vector_store import get_collection
+from rag.embedder import embed_query
 
 class RAGRetriever:
     def __init__(self) -> None:
