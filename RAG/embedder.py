@@ -24,4 +24,4 @@ def embed_query(text: str) -> list[float]:
         model="embed-english-v3.0",
         input_type="search_query"
     )
-    return resp.embeddings[0]
+    return resp.embeddings

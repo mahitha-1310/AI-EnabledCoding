@@ -1,7 +1,6 @@
 import os, json
 from typing_extensions import TypedDict
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
-from openai import APITimeoutError
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_openai import ChatOpenAI
@@ -147,7 +146,7 @@ class Pipeline():
         preserve  = messages[-self.config["messages_to_keep"]:]
 
         history = "\n".join(
-            f"{msg.__class__.__name__}: {msg.content}"
+            f"{msg.__class__.__name__}: {parse_content(msg.content)}"
             for msg in summarize
             if msg.content and not isinstance(msg, SystemMessage)
         )
@@ -172,13 +171,15 @@ class Pipeline():
     def converse_node(self, state: State):
         print("[Pipeline] Model is generating a response...")
         try:
-            history  = state.get("summarized_messages") or state["messages"]
+            messages = state.get("summarized_messages") or state["messages"]
+            text = "\n".join(parse_content(msg.content) for msg in messages)
             num_chunks = self.config.get("retrieval_chunks")
-            rag_data = self.rag.retrieve(query=history, k=num_chunks) if num_chunks > 0 else {}
-            response = self.model.invoke([SystemMessage(content=PATH.system_message.format(rag_data))] + history)
-        except APITimeoutError:
-            print("[Pipeline] WARNING: Model request timed out.")
-            response = AIMessage(content="[Error: the model timed out and could not produce a response. Please try again.]")
+            rag_data = self.rag.retrieve(query=text, k=num_chunks) if num_chunks > 0 else {}
+            rag_context = json.dumps(rag_data, indent=2) if rag_data else ""
+            response = self.model.invoke([SystemMessage(content=PATH.system_message.replace("{rag_context}", rag_context))] + messages)
+        except Exception as e:
+            print(e)
+            response = AIMessage(content=e)
         return {"messages": [response]}
 
     #############

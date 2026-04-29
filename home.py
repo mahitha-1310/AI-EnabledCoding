@@ -7,7 +7,7 @@ import os
 st.set_page_config(layout="wide", page_title="HASAIM")
 
 CHATBOT_MESSAGE = "What to do, what to do..."
-HEIGHT = 550
+HEIGHT = 700
 
 @st.cache_resource
 def get_pipeline():

@@ -64,6 +64,14 @@ def project_path(path: str) -> Path:
         return p
     return Path(__file__).parent / p
 
+def parse_content(content):
+    if isinstance(content, str):
+        return content
+    return " ".join(
+        block.get("text", "") if isinstance(block, dict) else str(block)
+        for block in content
+    )
+
 class _PathData:
     def __init__(self):
         # Paths
