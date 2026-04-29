@@ -55,23 +55,16 @@ def chatbot():
             st.rerun()
 
 def codebase_download():
-    if not os.path.exists(PATH.output_path):
-        os.makedirs(PATH.output_path, exist_ok=True)
     disable = not os.listdir(PATH.output_path)
     text = "Nothing to Download" if disable else "Download Codebase"
-    if st.button(text, disabled=disable, use_container_width=True):
-        try:
-            zip_data = create_zip(PATH.output_path)
-            st.download_button(
-                label="Click to Download ZIP",
-                data=zip_data,
-                file_name=f"{os.path.basename(PATH.output_path)}.zip",
-                mime="application/zip",
-                use_container_width=True
-            )
-            st.success("ZIP file ready for download!")
-        except Exception as e:
-            st.error(f"Error creating zip: {str(e)}")
+    st.download_button(
+        label=text,
+        data=create_zip(PATH.output_path),
+        file_name=f"{os.path.basename(PATH.output_path)}.zip",
+        mime="application/zip",
+        use_container_width=True,
+        disabled=disable
+    )
 
 def codebase_clear():
     disable = not os.listdir(PATH.editor_path) and not os.listdir(PATH.input_path)
