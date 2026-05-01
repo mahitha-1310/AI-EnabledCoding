@@ -34,7 +34,7 @@ class ValidationPipeline:
 
         self.config = HasaimConfiguration({
             "static_analyzer": iter_multilist(["clang-tidy", "cppcheck"], ["clang-tidy"]),
-            "program_args": "",
+            "command_line_args": "",
             "tool": iter_multilist(["memcheck", "helgrind", "massif", "callgrind"], ["memcheck"]),
             "check_only": True,
             "style": iter_list(["LLVM", "Google"], 0)
@@ -139,7 +139,7 @@ class ValidationPipeline:
             results["dynamic_analysis"] = self.dynamic_analysis.run(
                 executable_path=exe_path,
                 tools=self.config.list_items("tool"),
-                flags=self.config["program_args"].split() if self.config["program_args"] else []
+                flags=self.config["command_line_args"].split() if self.config["command_line_args"] else []
             )
             status = "OK" if results["dynamic_analysis"].get("overall_success") else "FAILED"
             print(f"[Validation] Dynamic analysis: {status}")
