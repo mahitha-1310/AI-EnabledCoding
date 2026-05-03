@@ -39,13 +39,13 @@ class Pipeline():
             model=self._model_name,
             temperature=model_temperature,
             base_url=os.getenv("OPENAI_API_BASE"),
-            timeout=int(os.getenv("MODEL_TIMEOUT", 120)),
+            timeout=int(os.getenv("MODEL_TIMEOUT")),
             max_retries=0
         ).bind_tools(model_tools)
 
         # Pipeline init
         self.graph = self.build(MemorySaver())
-        print(self.graph.get_graph().draw_ascii())
+        # print(self.graph.get_graph().draw_ascii())
         # Validation init
         self.validator = ValidationPipeline(output_dir=PATH.testing_path, source_dir=PATH.editor_path)
         # RAG init
@@ -62,7 +62,10 @@ class Pipeline():
 
         attempts_left = state.get("attempts_left", 0)
 
-        if not self.config["retry_prompt"] or attempts_left == 0:
+        # if self.config["retry_prompt"]:
+        #     attempts_left = request_retry(attempts_left)
+
+        if attempts_left == 0:
             print("[WARNING]: Code is not guaranteed to be functional.")
             return "insufficient"
 
