@@ -1,5 +1,4 @@
 from typing import List, Dict, Any
-import numpy as np
 
 from rag.vector_store import get_collection
 from rag.embedder import embed_query
@@ -12,7 +11,7 @@ class RAGRetriever:
         q_emb = embed_query(query)
 
         results = self.collection.query(
-            query_embeddings=np.array(q_emb),
+            query_embeddings=[q_emb],
             n_results=k,
             include=["documents", "metadatas", "distances"]
         )

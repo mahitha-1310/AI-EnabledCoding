@@ -3,7 +3,13 @@ from typing import Any, Dict
 from graders import ANALYSIS
 from dotenv import load_dotenv
 import streamlit as st
-import zipfile, shutil, json, uuid, io, os
+import zipfile
+import shutil
+import random
+import json
+import uuid
+import io
+import os
 
 _STREAM_KEYS = {"stdout", "stderr"}
 
@@ -24,9 +30,6 @@ def fmt_field(key: str, value: Any) -> str:
         return f"{key}:{body}\n"
     else:
         return f"{key}: {value}\n\n"
-
-def only_folders(path: str) -> bool:
-    return all(os.path.isdir(os.path.join(path, item)) for item in os.listdir(path))
 
 def assert_exists(path: Path) -> None:
     if not path.exists():
@@ -60,14 +63,6 @@ def project_path(path: str) -> Path:
     if p.is_absolute():
         return p
     return Path(__file__).parent / p
-
-def parse_content(content):
-    if isinstance(content, str):
-        return content
-    return " ".join(
-        block.get("text", "") if isinstance(block, dict) else str(block)
-        for block in content
-    )
 
 class _PathData:
     def __init__(self):
@@ -281,22 +276,27 @@ def generate_user_id() -> str:
     return st.session_state.user_id
 
 @st.dialog("LLM Attempt Limit Reached")
-def request_retry(num_attempts: int) -> None:
-    choice = st.radio(
-        label="How would you like to proceed?",
-        options=[
-            "Stop Attempting",
-            "Attempt One More Time",
-            f"Attempt {num_attempts} More Times",
-        ],
-        index=0,
-    )
+def request_retry(num_attempts: int) -> bool:
+    """Ask user if they should continue with prompting the llm."""
 
+    st.write("How would you like to proceed?")
+    choice = st.radio(
+        label="Select an option:",
+        options=[
+            "Stop Attempting", 
+            "Attempt One More Time", 
+            f"Attempt {num_attempts} More Times"
+        ],
+        index=0 # Default selection: Stop Attempting
+    )
+    
     if st.button("Confirm", disabled=choice is None):
-        if choice == "Attempt One More Time":
-            st.session_state.retry_result = 1
-        elif choice == f"Attempt {num_attempts} More Times":
-            st.session_state.retry_result = num_attempts
-        else:
-            st.session_state.retry_result = 0
+        st.session_state.confirmed_choice = choice
         st.rerun()
+    
+    if choice == "Attempt One More Time":
+        return 1
+    elif choice == f"Attempt {num_attempts} More Times":
+        return num_attempts
+    else:
+        return 0

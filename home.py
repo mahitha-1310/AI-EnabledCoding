@@ -1,38 +1,39 @@
 import streamlit as st
 from generation_pipeline import Pipeline
 from utils import *
-import time, os
+import time
+import os
 
 st.set_page_config(layout="wide", page_title="HASAIM")
 
 CHATBOT_MESSAGE = "What to do, what to do..."
-HEIGHT = 700
+HEIGHT = 550
 
 @st.cache_resource
 def get_pipeline():
     return Pipeline()
 
 def stream(response, delay: float):
-    for word in response:
+    for word in response:#.strip():
         yield word
         time.sleep(delay)
 
-def run_pipeline():
+def chatbot():
+    if 'messages' not in st.session_state:
+        st.session_state.messages = []
     with st.container(height=HEIGHT):
         for message in st.session_state.messages:
             st.chat_message(message['role']).markdown(message['content'])
         prompt = st.chat_input(CHATBOT_MESSAGE)
         if prompt and not prompt == "":
-            
+            # Add prompt to chat
             st.chat_message('user').markdown(prompt)
             st.session_state.messages.append({'role': 'user', 'content': prompt})
 
             clear_directories([PATH.editor_path, PATH.output_path])
             transfer(source=PATH.input_path, destination=PATH.editor_path)
-
-            for statevar in ["retry_result", "pending_retry", "retry_count"]:
-                st.session_state.pop(statevar, None)
-
+            
+            # Produce response
             response = None
             try:
                 with st.chat_message('assistant'):
@@ -41,8 +42,7 @@ def run_pipeline():
                             user_input=prompt,
                             user_id=user_id
                         )
-                    if response:
-                        st.write_stream(stream=stream(response=response, delay=0.005))
+                    st.write_stream(stream=stream(response=response, delay=0.005))
             except Exception as e:
                 st.error(f"Pipeline error: {e}")
             finally:
@@ -54,63 +54,27 @@ def run_pipeline():
                 st.session_state.messages.append({'role': 'assistant', 'content': response})
             st.rerun()
 
-def resume_pipeline():
-    extra_attempts = st.session_state.pop("retry_result")
-    if extra_attempts == 0:
-        st.session_state.messages.append({
-            'role': 'assistant',
-            'content': "Stopped: no further attempts requested."
-        })
-        st.rerun()
-        return
-
-    response = None
-    try:
-        with st.chat_message('assistant'):
-            with st.spinner("Retrying... (check terminal for live progress)", show_time=True):
-                response = pipeline.resume(
-                    user_id=user_id,
-                    extra_attempts=extra_attempts
-                )
-            if response:
-                st.write_stream(stream=stream(response=response, delay=0.005))
-    except Exception as e:
-        st.error(f"Pipeline resume error: {e}")
-    finally:
-        transfer(source=PATH.editor_path, destination=PATH.output_path)
-        transfer(source=PATH.testing_path, destination=PATH.output_path)
-
-    if response:
-        st.session_state.messages.append({'role': 'assistant', 'content': response})
-    st.rerun()
-
-def chatbot():
-    if 'messages' not in st.session_state:
-        st.session_state.messages = []
-    
-    if st.session_state.get("pending_retry"):
-        if "retry_result" not in st.session_state:
-            request_retry(st.session_state.get("retry_count", pipeline.config.get("return_anyway_after")))
-        else:
-            st.session_state.pending_retry = False
-            resume_pipeline()
-    
-    run_pipeline()
-
 def codebase_download():
-    disable = only_folders(PATH.output_path)
+    if not os.path.exists(PATH.output_path):
+        os.makedirs(PATH.output_path, exist_ok=True)
+    disable = not os.listdir(PATH.output_path)
     text = "Nothing to Download" if disable else "Download Codebase"
-    st.download_button(
-        label=text,
-        data=create_zip(PATH.output_path),
-        file_name=f"{os.path.basename(PATH.output_path)}.zip",
-        mime="application/zip",
-        use_container_width=True,
-        disabled=disable
-    )
+    if st.button(text, disabled=disable, use_container_width=True):
+        try:
+            zip_data = create_zip(PATH.output_path)
+            st.download_button(
+                label="Click to Download ZIP",
+                data=zip_data,
+                file_name=f"{os.path.basename(PATH.output_path)}.zip",
+                mime="application/zip",
+                use_container_width=True
+            )
+            st.success("ZIP file ready for download!")
+        except Exception as e:
+            st.error(f"Error creating zip: {str(e)}")
 
 def codebase_clear():
-    disable = only_folders(PATH.editor_path) and only_folders(PATH.input_path)
+    disable = not os.listdir(PATH.editor_path) and not os.listdir(PATH.input_path)
     text = "Nothing to Clear" if disable else "Clear Codebase"
     if st.button(text, disabled=disable, use_container_width=True):
         try:
@@ -192,6 +156,7 @@ def customize_pipeline(pipeline: Pipeline) -> None:
         customize_chatbot()
     with valid:
         customize_validator()
+    
 
 _ALLOWED_EXTENSIONS = {".c", ".h"}
 _ALLOWED_FILENAMES  = {"Makefile", "makefile", "GNUmakefile"}
@@ -211,8 +176,12 @@ def file_uploader(path: str, label: str):
             )
             continue
 
+        # Read the file data
+        bytes_data = uploaded_file.read()
+
+        # Save the file to pipeline.input_path
         file_path = os.path.join(path, name)
-        os.makedirs(path, exist_ok=True)
+        os.makedirs(path, exist_ok=True)  # creates the dir if it doesn't exist
         with open(file_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
 
@@ -236,6 +205,5 @@ if __name__ == "__main__":
             codebase_download()
             codebase_clear()
             pipeline_customize(pipeline=pipeline)
-
     with edit_col:
         chatbot()
