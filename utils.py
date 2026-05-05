@@ -25,6 +25,9 @@ def fmt_field(key: str, value: Any) -> str:
     else:
         return f"{key}: {value}\n\n"
 
+def only_folders(path: str) -> bool:
+    return all(os.path.isdir(os.path.join(path, item)) for item in os.listdir(path))
+
 def assert_exists(path: Path) -> None:
     if not path.exists():
         raise FileNotFoundError(f"Path not found: {path}")

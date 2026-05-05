@@ -98,7 +98,7 @@ def chatbot():
     run_pipeline()
 
 def codebase_download():
-    disable = not os.listdir(PATH.output_path)
+    disable = only_folders(PATH.output_path)
     text = "Nothing to Download" if disable else "Download Codebase"
     st.download_button(
         label=text,
@@ -110,7 +110,7 @@ def codebase_download():
     )
 
 def codebase_clear():
-    disable = not os.listdir(PATH.editor_path) and not os.listdir(PATH.input_path)
+    disable = only_folders(PATH.editor_path) and only_folders(PATH.input_path)
     text = "Nothing to Clear" if disable else "Clear Codebase"
     if st.button(text, disabled=disable, use_container_width=True):
         try:
