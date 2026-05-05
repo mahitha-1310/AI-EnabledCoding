@@ -1,7 +1,6 @@
 from langchain_core.messages import HumanMessage, ToolMessage
 from unittest.mock import MagicMock, patch
 from generation_pipeline import Pipeline
-from tqdm import tqdm
 import inspect as insp
 import tempfile, os, pytest
 

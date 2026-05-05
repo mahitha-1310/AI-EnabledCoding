@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 import streamlit as st
 import zipfile
 import shutil
-import random
 import json
 import uuid
 import io

@@ -1,5 +1,4 @@
 from chromadb.api.models.Collection import Collection
-from rag.vector_store import get_collection
 from rag.embedder import embed_texts
 from rag.git_loader_full import fetch_repo_files_all_branches
 from rag.indexer import preprocess, chunk_lines
@@ -9,7 +8,7 @@ def embed_repo(collection: Collection, repo_url: str, batch_size: int = 64):
     # 1. Fetch all files across all branches
     items = fetch_repo_files_all_branches(
         repo_url,
-        include_branches=None,   # None = all branches; or pass ["main", "dev"]
+        include_branches=None,
         max_files_per_branch=100,
         max_chars_per_file=50000,
     )
