@@ -211,7 +211,7 @@ class TestGenerationPipelineInstance:
         with patch.object(self.pipeline.validator, 'run', return_value={"success": True}):
             state = {"attempts_left": None, "validations": []}
             result = self.pipeline.validate_node(state)
-        assert result["attempts_left"] == self.pipeline.config["return_anyway_after"]
+        assert result["attempts_left"] == self.pipeline.config["return_anyway_after"]-1
 
     def validate_node_decrements_attempts(self):
         with patch.object(self.pipeline.validator, 'run', return_value={"success": True}):
@@ -245,23 +245,22 @@ def main():
     for test_name, test in insp.getmembers(tester, predicate=insp.ismethod):
         if not test_name.startswith('_'):
             tests.append((test_name, test))
-    
-    bar = tqdm(
-        total=len(tests)-1, 
-        desc="Testing Nodes:", 
-        leave=True
-    )
 
+    fails = 0
     for test_name, test in tests:
         try:
             test()
             print(f"[O] Test Passed: {test_name}")
-            bar.update()
         except Exception as e:
             print(f"[X] Test Failed: {test_name}\n    Reason: {e}")
-
-    bar.close()
-    print("All tests passed! :D")
+            fails += 1
+    
+    if fails == 0:
+        print("All tests passed! :D")
+    elif fails == 1:
+        print("1 issue remains.")
+    else:
+        print(f"{fails} issues remain.")
 
 if __name__ == "__main__":
     main()
