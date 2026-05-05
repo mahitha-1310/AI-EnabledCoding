@@ -3,13 +3,7 @@ from typing import Any, Dict
 from graders import ANALYSIS
 from dotenv import load_dotenv
 import streamlit as st
-import zipfile
-import shutil
-import random
-import json
-import uuid
-import io
-import os
+import zipfile, shutil, json, uuid, io, os
 
 _STREAM_KEYS = {"stdout", "stderr"}
 
@@ -283,27 +277,23 @@ def generate_user_id() -> str:
             st.query_params["uid"] = new_id
     return st.session_state.user_id
 
-# @st.dialog("LLM Attempt Limit Reached")
-# def request_retry(num_attempts: int) -> bool:
-#     """Ask user if they should continue with prompting the llm."""
+@st.dialog("LLM Attempt Limit Reached")
+def request_retry(num_attempts: int) -> None:
+    choice = st.radio(
+        label="How would you like to proceed?",
+        options=[
+            "Stop Attempting",
+            "Attempt One More Time",
+            f"Attempt {num_attempts} More Times",
+        ],
+        index=0,
+    )
 
-#     choice = st.radio(
-#         label="How would you like to proceed?",
-#         options=[
-#             "Stop Attempting", 
-#             "Attempt One More Time", 
-#             f"Attempt {num_attempts} More Times"
-#         ],
-#         index=0 # Default selection: Stop Attempting
-#     )
-    
-#     if st.button("Confirm", disabled=choice is None):
-#         st.session_state.confirmed_choice = choice
-#         st.rerun()
-    
-#     if choice == "Attempt One More Time":
-#         return 1
-#     elif choice == f"Attempt {num_attempts} More Times":
-#         return num_attempts
-#     else:
-#         return 0
+    if st.button("Confirm", disabled=choice is None):
+        if choice == "Attempt One More Time":
+            st.session_state.retry_result = 1
+        elif choice == f"Attempt {num_attempts} More Times":
+            st.session_state.retry_result = num_attempts
+        else:
+            st.session_state.retry_result = 0
+        st.rerun()

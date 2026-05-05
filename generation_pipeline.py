@@ -1,4 +1,5 @@
 import os, json
+import streamlit as st
 from typing_extensions import TypedDict
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import StateGraph, START, END
@@ -50,9 +51,6 @@ class Pipeline():
         self.validator = ValidationPipeline(output_dir=PATH.testing_path, source_dir=PATH.editor_path)
         # RAG init
         self.rag = RAGRetriever()
-    
-    def get_model_name(self):
-        return self._model_name
 
     ### ROUTERS ###
 
@@ -62,11 +60,12 @@ class Pipeline():
 
         attempts_left = state.get("attempts_left", 0)
 
-        # if self.config["retry_prompt"]:
-        #     attempts_left = request_retry(attempts_left)
-
         if attempts_left == 0:
-            print("[WARNING]: Code is not guaranteed to be functional.")
+            if self.config["retry_prompt"]:
+                st.session_state.pending_retry = True
+                st.session_state.pending_retry_count = self.config["return_anyway_after"]
+            else:
+                print("[WARNING]: Code is not guaranteed to be functional.")
             return "insufficient"
 
         return "fail"
@@ -80,9 +79,6 @@ class Pipeline():
     def summarization_router(self, state: State):
         return "summarize" if len(state["messages"]) > self.config["summarize_after"] else "converse"
 
-
-    ###############
-    
     ### NODES ###
 
     def tool_node(self, state: State):
@@ -127,10 +123,10 @@ class Pipeline():
     def validate_node(self, state: State):
         print("[Pipeline] Running validation pipeline...")
 
-        # Initialize attempts counter on first validation, then decrement on each retry
         attempts_left = state.get("attempts_left")
+
         if attempts_left is None:
-            attempts_left = self.config["return_anyway_after"]
+            attempts_left = self.config["return_anyway_after"] - 1
         else:
             attempts_left -= 1
 
@@ -164,7 +160,6 @@ class Pipeline():
 
     def sendback_node(self, state: State):
         print("[Pipeline] Sending validation feedback back to model...")
-        # TODO: Obtain relevant validation logs/jsons!
         summary_json = json.dumps(state.get("validations", [{}])[-1])
 
         response = self.model.invoke([HumanMessage(content=PATH.feedback_message.format(summary=summary_json))])
@@ -185,13 +180,15 @@ class Pipeline():
             response = AIMessage(content=e)
         return {"messages": [response]}
 
-    #############
+    ### INITIALIZATION ###
+
+    def get_model_name(self):
+        return self._model_name
 
     def build(self, checkpointer):
         graph_builder = StateGraph(State)
 
         # NODES
-
         # Update the LLM's mental representation of the codebase structure
         graph_builder.add_node("update", self.update_node)
         # If message history gets too long, summarize
@@ -222,7 +219,6 @@ class Pipeline():
         return graph_builder.compile(checkpointer=checkpointer)
 
     def run(self, user_input: str, user_id: str):
-
         if not self.graph:
             self.build(MemorySaver())
 
@@ -231,19 +227,33 @@ class Pipeline():
             {"configurable": {"thread_id": user_id}}
         )
 
-        last = response['messages'][-1]
-        if last.content:
-            return last.content
+        return self._get_llm_response(response)
 
-        # Model returned no content — synthesize a summary from validation results
+    def resume(self, user_id: str, extra_attempts: int) -> str:
+        if not self.graph:
+            self.build(MemorySaver())
+
+        response = self.graph.invoke(
+            {"attempts_left": extra_attempts},
+            {"configurable": {"thread_id": user_id}}
+        )
+
+        return self._get_llm_response(response)
+
+    def _get_llm_response(self, response: dict) -> str:
+
+        resp = response['messages'][-1]
+        if resp.content:
+            return resp.content
+
         validations = response.get("validations", [])
         if validations:
             v = validations[-1]
-            lines = ["(The model produced no text response. Validation summary:)"]
+            lines = ["(The model produced no text response. Validation summary:"]
             for stage, result in v.items():
                 if isinstance(result, dict):
                     ok = result.get("overall_success", result.get("success", "?"))
                     lines.append(f"  {stage}: {'OK' if ok else 'FAILED'}")
             return "\n".join(lines)
 
-        return "(No response generated.)"
+        return "No response generated."

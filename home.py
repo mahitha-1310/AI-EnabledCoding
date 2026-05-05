@@ -1,8 +1,7 @@
 import streamlit as st
 from generation_pipeline import Pipeline
 from utils import *
-import time
-import os
+import time, os
 
 st.set_page_config(layout="wide", page_title="HASAIM")
 
@@ -14,26 +13,26 @@ def get_pipeline():
     return Pipeline()
 
 def stream(response, delay: float):
-    for word in response:#.strip():
+    for word in response:
         yield word
         time.sleep(delay)
 
-def chatbot():
-    if 'messages' not in st.session_state:
-        st.session_state.messages = []
+def run_pipeline():
     with st.container(height=HEIGHT):
         for message in st.session_state.messages:
             st.chat_message(message['role']).markdown(message['content'])
         prompt = st.chat_input(CHATBOT_MESSAGE)
         if prompt and not prompt == "":
-            # Add prompt to chat
+            
             st.chat_message('user').markdown(prompt)
             st.session_state.messages.append({'role': 'user', 'content': prompt})
 
             clear_directories([PATH.editor_path, PATH.output_path])
             transfer(source=PATH.input_path, destination=PATH.editor_path)
-            
-            # Produce response
+
+            for statevar in ["retry_result", "pending_retry", "retry_count"]:
+                st.session_state.pop(statevar, None)
+
             response = None
             try:
                 with st.chat_message('assistant'):
@@ -42,7 +41,8 @@ def chatbot():
                             user_input=prompt,
                             user_id=user_id
                         )
-                    st.write_stream(stream=stream(response=response, delay=0.005))
+                    if response:
+                        st.write_stream(stream=stream(response=response, delay=0.005))
             except Exception as e:
                 st.error(f"Pipeline error: {e}")
             finally:
@@ -53,6 +53,49 @@ def chatbot():
             if response:
                 st.session_state.messages.append({'role': 'assistant', 'content': response})
             st.rerun()
+
+def resume_pipeline():
+    extra_attempts = st.session_state.pop("retry_result")
+    if extra_attempts == 0:
+        st.session_state.messages.append({
+            'role': 'assistant',
+            'content': "Stopped: no further attempts requested."
+        })
+        st.rerun()
+        return
+
+    response = None
+    try:
+        with st.chat_message('assistant'):
+            with st.spinner("Retrying... (check terminal for live progress)", show_time=True):
+                response = pipeline.resume(
+                    user_id=user_id,
+                    extra_attempts=extra_attempts
+                )
+            if response:
+                st.write_stream(stream=stream(response=response, delay=0.005))
+    except Exception as e:
+        st.error(f"Pipeline resume error: {e}")
+    finally:
+        transfer(source=PATH.editor_path, destination=PATH.output_path)
+        transfer(source=PATH.testing_path, destination=PATH.output_path)
+
+    if response:
+        st.session_state.messages.append({'role': 'assistant', 'content': response})
+    st.rerun()
+
+def chatbot():
+    if 'messages' not in st.session_state:
+        st.session_state.messages = []
+    
+    if st.session_state.get("pending_retry"):
+        if "retry_result" not in st.session_state:
+            request_retry(st.session_state.get("retry_count", pipeline.config.get("return_anyway_after")))
+        else:
+            st.session_state.pending_retry = False
+            resume_pipeline()
+    
+    run_pipeline()
 
 def codebase_download():
     disable = not os.listdir(PATH.output_path)
@@ -149,7 +192,6 @@ def customize_pipeline(pipeline: Pipeline) -> None:
         customize_chatbot()
     with valid:
         customize_validator()
-    
 
 _ALLOWED_EXTENSIONS = {".c", ".h"}
 _ALLOWED_FILENAMES  = {"Makefile", "makefile", "GNUmakefile"}
@@ -169,12 +211,8 @@ def file_uploader(path: str, label: str):
             )
             continue
 
-        # Read the file data
-        bytes_data = uploaded_file.read()
-
-        # Save the file to pipeline.input_path
         file_path = os.path.join(path, name)
-        os.makedirs(path, exist_ok=True)  # creates the dir if it doesn't exist
+        os.makedirs(path, exist_ok=True)
         with open(file_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
 
@@ -198,5 +236,6 @@ if __name__ == "__main__":
             codebase_download()
             codebase_clear()
             pipeline_customize(pipeline=pipeline)
+
     with edit_col:
         chatbot()

@@ -1,11 +1,11 @@
 from langchain_core.messages import HumanMessage, ToolMessage
 from unittest.mock import MagicMock, patch
 from generation_pipeline import Pipeline
-from openai import APITimeoutError
 from tqdm import tqdm
-from tools import *
-import tempfile, os, pytest
 import inspect as insp
+import tempfile, os, pytest
+
+from tools import *
 
 class TestGenerationPipelineInstance:
     def __init__(self):
@@ -48,8 +48,6 @@ class TestGenerationPipelineInstance:
 
             assert self.pipeline.grading_router(state) == "insufficient"
 
-    # Post Converse Router
-
     def post_converse_router_tools(self):
         msg = MagicMock()
         msg.tool_calls = [{"name": "read", "args": {"path": "workshop/input/test.py", "encoding": "utf-8"}, "id": "1"}]
@@ -62,8 +60,6 @@ class TestGenerationPipelineInstance:
         state = {"messages": [msg]}
         assert self.pipeline.post_converse_router(state) == "validate"
 
-    # Summarization Router
-
     def summarization_router_summarize(self):
         state = {"messages": [MagicMock()] * 25}
         assert self.pipeline.summarization_router(state) == "summarize"
@@ -73,8 +69,6 @@ class TestGenerationPipelineInstance:
         assert self.pipeline.summarization_router(state) == "converse"
     
     ### NODES ###
-
-    # Tool Node
 
     def tool_node_success_read(self):
 
@@ -213,8 +207,6 @@ class TestGenerationPipelineInstance:
 
         assert "weird_tool_call" in self._msgcontent(result)
 
-    # Validate Node
-
     def validate_node_initializes_attempts(self):
         with patch.object(self.pipeline.validator, 'run', return_value={"success": True}):
             state = {"attempts_left": None, "validations": []}
@@ -233,15 +225,11 @@ class TestGenerationPipelineInstance:
             result = self.pipeline.validate_node(state)
         assert len(result["validations"]) == 2
 
-    # Converse Node
-
     def converse_node_success(self):
         self.pipeline.model.invoke.return_value = MagicMock(content="Here is the code.")
         state = {"messages": [HumanMessage(content="Write a function the prints 'i miss your mom' 36 times.")], "summarized_messages": None}
         result = self.pipeline.converse_node(state)
         assert self._msgcontent(result) == "Here is the code."
-
-    # Sendback Node
 
     def sendback_node(self):
         with patch.object(self.pipeline, 'model') as mock_model:
