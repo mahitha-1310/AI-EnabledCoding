@@ -26,7 +26,8 @@ class State(TypedDict):
     attempts_left: int
 
 class Pipeline():
-    def __init__(self):
+    def __init__(self, user_id: str = None):
+        self.user_id = user_id
 
         # Model init
         self.config = HasaimConfiguration({
@@ -50,11 +51,16 @@ class Pipeline():
             max_retries=10
         ).bind_tools(model_tools)
 
+        # Path init
+        self.paths = get_user_paths(user_id)
         # Pipeline init
         self.graph = self.build(MemorySaver())
         print(self.graph.get_graph().draw_ascii())
         # Validation init
-        self.validator = ValidationPipeline(output_dir=PATH.testing_path, source_dir=PATH.editor_path)
+        self.validator = ValidationPipeline(
+            output_dir=project_path(self.paths.testing_path),
+            source_dir=project_path(self.paths.editor_path)
+        )
         # RAG init
         self.rag = RAGRetriever()
         self._embedded_url: str | None = None
@@ -65,7 +71,7 @@ class Pipeline():
     ### ROUTERS ###
 
     def grading_router(self, state: State):
-        if grade(output_path=PATH.testing_path):
+        if grade(output_path=project_path(self.paths.testing_path)):
             return "pass"
 
         attempts_left = state.get("attempts_left", 0)
@@ -125,9 +131,9 @@ class Pipeline():
             self._embedded_url = url
 
         print("[Pipeline] Updating project structure...")
-        project_structure = list_dir(PATH.editor_path)
+        project_structure = list_dir(self.paths.editor_path)
         tool_message = str.format(
-            PATH.structure_message,
+            self.paths.structure_message,
             directory_tree=json.dumps(project_structure["structure"], indent=4)
         )
 

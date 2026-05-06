@@ -4,6 +4,7 @@ import subprocess
 import json
 from typing import List, Dict, Any, Optional
 from utils import fmt_field
+import traceback as tb
 
 MAKE_COMMAND = ["bear", "--", "make", "-B"]  # -B forces full rebuild so bear always captures compile commands
 MAKEFILE_ALIASES = ["Makefile", "makefile", "GNUmakefile"]
@@ -96,12 +97,22 @@ class CompilationStage:
                                      or did not generate an executable.
         """
         try:
-            proc = subprocess.run(
-                MAKE_COMMAND,
-                cwd=self.project_root,
-                capture_output=True,
-                text=True
-            )
+            try:
+                subprocess.run(["bear", "--version"], capture_output=True, check=True)
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                proc = subprocess.run(
+                    ["make", "-B"],
+                    cwd=self.project_root,
+                    capture_output=True,
+                    text=True
+                )
+            else:
+                proc = subprocess.run(
+                    MAKE_COMMAND,
+                    cwd=self.project_root,
+                    capture_output=True,
+                    text=True
+                )
 
             # Attempt to find generated `compile_commands.json` file
             compile_commands_path = os.path.join(self.project_root, "compile_commands.json")
@@ -141,6 +152,7 @@ class CompilationStage:
 
         except Exception as e:
             print(f"Error running make: {e}")
+            tb.print_exc()
             return {
                 "make_output": {
                     "cmd": ' '.join(MAKE_COMMAND),

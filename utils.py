@@ -2,13 +2,7 @@ from pathlib import Path
 from typing import Any, Dict
 from graders import ANALYSIS
 from dotenv import load_dotenv
-import streamlit as st
-import zipfile
-import shutil
-import json
-import uuid
-import io
-import os
+import streamlit as st, zipfile, shutil, json, uuid, io, os
 
 _STREAM_KEYS = {"stdout", "stderr"}
 
@@ -67,18 +61,22 @@ def project_path(path: str) -> Path:
     return Path(__file__).parent / p
 
 class _PathData:
-    def __init__(self):
-        # Paths
+    def __init__(self, user_id: str = None):
         self.summary_path = os.path.join("logs", "summary.json")
         self.workshop_path = "workshop"
         self.prompts_path = "prompts"
+        
+        if user_id:
+            user_session_path = os.path.join(self.workshop_path, "sessions", user_id)
+        else:
+            user_session_path = self.workshop_path
 
-        self.input_path =   os.path.join(self.workshop_path, "input")
-        self.test_path =    os.path.join(self.workshop_path, "test")
-        self.editor_path =  os.path.join(self.workshop_path, "editor")
-        self.testing_path = os.path.join(self.workshop_path, "testing")
-        self.output_path =  os.path.join(self.workshop_path, "output")
-        self.result_path =  os.path.join(self.workshop_path, "result")
+        self.input_path =   os.path.join(user_session_path, "input")
+        self.test_path =    os.path.join(user_session_path, "test")
+        self.editor_path =  os.path.join(user_session_path, "editor")
+        self.testing_path = os.path.join(user_session_path, "testing")
+        self.output_path =  os.path.join(user_session_path, "output")
+        self.result_path =  os.path.join(user_session_path, "result")
 
         for path in [
             self.input_path, self.test_path, self.editor_path,
@@ -104,6 +102,12 @@ class _PathData:
         os.makedirs(path, exist_ok=True)
         return path
 
+def get_user_paths(user_id: str = None) -> _PathData:
+    """Get or create path data for a specific user session."""
+    if user_id is None:
+        return _PathData()
+    return _PathData(user_id)
+
 PATH = _PathData()
 
 def get_path(path: str) -> Path:
@@ -128,10 +132,37 @@ def get_path(path: str) -> Path:
 
     return base_path / requested_path
 
+def _copy_recursive(src: Path, dst: Path, patterns: list[str]) -> None:
+    try:
+        dst.mkdir(parents=True, exist_ok=True)
+        with os.scandir(src) as entries:
+            for entry in entries:
+                src_item = Path(entry.path)
+                dst_item = dst / entry.name
+
+                if any(src_item.match(pattern) for pattern in patterns):
+                    continue
+
+                try:
+                    if entry.is_dir(follow_symlinks=False):
+                        _copy_recursive(src_item, dst_item)
+                    elif entry.is_file(follow_symlinks=False):
+                        shutil.copy2(src_item, dst_item)
+                except Exception as e:
+                    print(f"Warning: Failed to copy {src_item.name}: {e}")
+                    continue
+    except Exception as e:
+        print(f"Error creating directory {dst}: {e}")
+        raise
+
 def transfer(source: str, destination: str) -> None:
     """
     Recursively copy *source* directory into *destination*, honouring
     comma-separated glob patterns in the IGNORE environment variable.
+    
+    Raises:
+        FileNotFoundError: If source directory doesn't exist
+        Exception: If copy operation fails
     """
     src_path = project_path(source)
     dst_path = project_path(destination)
@@ -141,23 +172,11 @@ def transfer(source: str, destination: str) -> None:
     ignore_raw = os.getenv("IGNORE", "")
     patterns = [p.strip() for p in ignore_raw.split(",") if p.strip()]
 
-    def _copy_recursive(src: Path, dst: Path) -> None:
-        dst.mkdir(parents=True, exist_ok=True)
-        with os.scandir(src) as entries:
-            for entry in entries:
-                src_item = Path(entry.path)
-                dst_item = dst / entry.name
-
-                if any(src_item.match(pattern) for pattern in patterns):
-                    print(f"Excluded: {src_item.relative_to(src_path)}")
-                    continue
-
-                if entry.is_dir(follow_symlinks=False):
-                    _copy_recursive(src_item, dst_item)
-                elif entry.is_file(follow_symlinks=False):
-                    shutil.copy2(src_item, dst_item)
-
-    _copy_recursive(src_path, dst_path)
+    try:
+        _copy_recursive(src_path, dst_path, patterns)
+    except Exception as e:
+        print(f"Transfer failed from {source} to {destination}: {e}")
+        raise
 
 def write_files(file_list: list[str], target_dir: str) -> None:
     """Copy a flat list of files into *target_dir* using transfer primitives."""
@@ -169,16 +188,28 @@ def write_files(file_list: list[str], target_dir: str) -> None:
             shutil.copy2(src, dst)
 
 def clear_directory(directory: str) -> bool:
-    """Remove all contents of *directory* without deleting the directory itself."""
+    """Remove all contents of *directory* without deleting the directory itself.
+    
+    Returns True if successful, False otherwise. Handles errors gracefully.
+    """
     path = Path(directory)
     if not path.exists():
         return False
-    for item in path.iterdir():
-        if item.is_file() or item.is_symlink():
-            item.unlink()
-        elif item.is_dir():
-            shutil.rmtree(item)
-    return True
+    
+    try:
+        for item in path.iterdir():
+            try:
+                if item.is_file() or item.is_symlink():
+                    item.unlink()
+                elif item.is_dir():
+                    shutil.rmtree(item)
+            except Exception as e:
+                print(f"Failed to delete {item}: {e}")
+                continue
+        return True
+    except Exception as e:
+        print(f"Error clearing directory {directory}: {e}")
+        return False
 
 def clear_directories(directories: list[str]) -> Dict[str, bool]:
     """Clear multiple directories, returning a success map."""
@@ -289,7 +320,7 @@ def request_retry(num_attempts: int) -> bool:
             "Attempt One More Time", 
             f"Attempt {num_attempts} More Times"
         ],
-        index=0 # Default selection: Stop Attempting
+        index=0
     )
     
     if st.button("Confirm", disabled=choice is None):

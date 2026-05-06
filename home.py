@@ -1,9 +1,9 @@
-import streamlit as st
 from generation_pipeline import Pipeline
-from utils import *
-import time
-import os
 from dotenv import load_dotenv
+from utils import *
+import streamlit as st
+import traceback as tb
+import time, os
 
 load_dotenv()
 
@@ -13,8 +13,14 @@ CHATBOT_MESSAGE = "What to do, what to do..."
 HEIGHT = 550
 
 @st.cache_resource
-def get_pipeline():
-    return Pipeline()
+def get_pipeline(user_id: str = None):
+    """Get a pipeline instance.
+    
+    Note: The pipeline is created once per session. If user_id is None,
+    it will use default paths. For proper session isolation, user_id should
+    be provided.
+    """
+    return Pipeline(user_id=user_id)
 
 def stream(response, delay: float):
     for word in response:
@@ -24,58 +30,78 @@ def stream(response, delay: float):
 def chatbot():
     if 'messages' not in st.session_state:
         st.session_state.messages = []
+    
+    user_paths = get_user_paths(user_id)
+    
     with st.container(height=HEIGHT):
         for message in st.session_state.messages:
             st.chat_message(message['role']).markdown(message['content'])
-        prompt = st.chat_input(CHATBOT_MESSAGE)
+        
+        prompt = st.chat_input(CHATBOT_MESSAGE, key="chat_input")
+        
         if prompt and not prompt == "":
             # Add prompt to chat
             st.chat_message('user').markdown(prompt)
             st.session_state.messages.append({'role': 'user', 'content': prompt})
 
-            clear_directories([PATH.editor_path, PATH.output_path])
-            transfer(source=PATH.input_path, destination=PATH.editor_path)
-            
-            # Produce response
-            response = None
             try:
-                with st.chat_message('assistant'):
-                    with st.spinner("Working on it... (check terminal for live progress)", show_time=True):
-                        response = pipeline.run(
-                            user_input=prompt,
-                            user_id=user_id
-                        )
-                    st.write_stream(stream=stream(response=response, delay=0.005))
+                clear_directories([user_paths.editor_path, user_paths.output_path])
+                transfer(source=user_paths.input_path, destination=user_paths.editor_path)
+                
+                # Produce response
+                response = None
+                try:
+                    with st.chat_message('assistant'):
+                        with st.spinner("Working on it... (check terminal for live progress)", show_time=True):
+                            response = pipeline.run(
+                                user_input=prompt,
+                                user_id=user_id
+                            )
+                        st.write_stream(stream=stream(response=response, delay=0.005))
+                except Exception as e:
+                    error_msg = f"An error was encountered: {str(e)}"
+                    st.error(error_msg)
+                    print(tb.format_exc())
+                    response = error_msg
+                
+                try:
+                    clear_directory(user_paths.input_path)
+                    transfer(source=user_paths.editor_path, destination=user_paths.output_path)
+                    transfer(source=user_paths.testing_path, destination=user_paths.output_path)
+                except Exception as cleanup_error:
+                    print(f"Error during cleanup: {cleanup_error}")
+                    st.warning("Some files may not have been properly transferred.")
+
+                if response:
+                    st.session_state.messages.append({'role': 'assistant', 'content': response})
+                st.rerun()
+                
             except Exception as e:
-                st.error(f"Pipeline error: {e}")
-            finally:
-                clear_directory(PATH.input_path)
-                transfer(source=PATH.editor_path, destination=PATH.output_path)
-                transfer(source=PATH.testing_path, destination=PATH.output_path)
+                import traceback
+                st.error(f"Critical error: {str(e)}")
+                print(f"Critical error traceback: {traceback.format_exc()}")
 
-            if response:
-                st.session_state.messages.append({'role': 'assistant', 'content': response})
-            st.rerun()
-
-def codebase_download():
-    disable = only_folders(PATH.output_path)
+def codebase_download(user_paths):
+    disable = only_folders(user_paths.output_path)
     text = "Nothing to Download" if disable else "Download Codebase"
     st.download_button(
         label=text,
-        data=create_zip(PATH.output_path),
-        file_name=f"{os.path.basename(PATH.output_path)}.zip",
+        data=create_zip(project_path(user_paths.output_path)),
+        file_name=f"{os.path.basename(user_paths.output_path)}.zip",
         mime="application/zip",
         use_container_width=True,
         disabled=disable
     )
 
-def codebase_clear():
-    disable = only_folders(PATH.editor_path) and only_folders(PATH.input_path)
+def codebase_clear(user_paths):
+    disable = only_folders(project_path(user_paths.editor_path)) and only_folders(project_path(user_paths.input_path))
     text = "Nothing to Clear" if disable else "Clear Codebase"
     if st.button(text, disabled=disable, use_container_width=True):
         try:
-            clear_directory(PATH.workshop_path)
-            st.success("Directory cleared successfully!")
+            user_session_path = os.path.join(user_paths.workshop_path, "sessions", user_id)
+            if os.path.exists(user_session_path):
+                shutil.rmtree(user_session_path)
+            st.success("Your workspace cleared successfully!")
             st.rerun()
         except Exception as e:
             st.error(f"Error clearing directory: {str(e)}")
@@ -162,29 +188,34 @@ def file_uploader(path: str, label: str):
         label=label,
         accept_multiple_files=True
     )
+    
+    if not uploaded_files:
+        return
+    
     for uploaded_file in uploaded_files:
         name = uploaded_file.name
         ext  = os.path.splitext(name)[1].lower()
 
         if ext not in _ALLOWED_EXTENSIONS and name not in _ALLOWED_FILENAMES:
             st.warning(
-                f"'{name}' was skipped: only .c/.h source files and Makefiles are supported."
+                f"'{name}' was skipped: Only .c/.h source files and Makefiles are supported."
             )
             continue
 
-        # Read the file data
-        bytes_data = uploaded_file.read()
-
-        # Save the file to pipeline.input_path
-        file_path = os.path.join(path, name)
-        os.makedirs(path, exist_ok=True)  # creates the dir if it doesn't exist
-        with open(file_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
+        try:
+            file_path = os.path.join(path, name)
+            os.makedirs(path, exist_ok=True)
+            with open(file_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+        except Exception as e:
+            st.error(f"Failed to upload '{name}': {str(e)}")
+            continue
 
 if __name__ == "__main__":
 
-    pipeline = get_pipeline()
     user_id = generate_user_id()
+    pipeline = get_pipeline(user_id=user_id)
+    user_paths = get_user_paths(user_id)
 
     st.title("HASAIM")
     st.subheader("High Assurance System AI Modernization")
@@ -194,12 +225,12 @@ if __name__ == "__main__":
         cl, cm, cr = st.tabs(["Workspace", "Testing", "Files"])
 
         with cl:
-            file_uploader(PATH.input_path, "Upload C Files")
+            file_uploader(project_path(user_paths.input_path), "Upload C Files")
         with cm:
-            file_uploader(PATH.test_path, "Upload Unit Tests")
+            file_uploader(project_path(user_paths.test_path), "Upload Unit Tests")
         with cr:
-            codebase_download()
-            codebase_clear()
+            codebase_download(user_paths)
+            codebase_clear(user_paths)
             pipeline_customize(pipeline=pipeline)
     with edit_col:
         chatbot()
