@@ -45,7 +45,7 @@ cat _validation_test.py; echo
 
 When you run the test script, it expects you to enter a valid `Test<No.>/` directory to test, which lives inside the **root-level** `/ValidationTest/` folder.
 
-There are currently **three** test folders that exist _(and thus 3 valid inputs when running the test script)_:
+There are currently **five** test folders that exist _(and thus 3 valid inputs when running the test script)_:
 
 <details>
   <summary>Test Folders Explanation</summary>
@@ -53,6 +53,8 @@ There are currently **three** test folders that exist _(and thus 3 valid inputs 
 - `Test1`: contains a single, error-free `test1.c` file.
 - `Test2`: contains a slightly modified version of `test1.c`, and should raise a **WARNING**, but no errors.
 - `Test3`: contains a slightly modified version of `test1.c`, and should raise an **ERROR** when compilation is attempted.
+- `Test4`: contains a project consisting of two source code files, first.c and second.c, as well as a simple, user-defined header file second.h. There should be no errors or warnings, and an executable should be successfully generated.
+- `Test5`: contains subdirectories in it which it contains code that follows the prompt, code that semi follows the prompt and completely irrelevant code this test serves the purpose of testing the LLM Metrics Stage.
 
 </details>
 
@@ -62,7 +64,7 @@ To run the test _(from root directory)_:
 python3 _validation_test.py
 ```
 
-and then enter one of the valid tests from above.
+and then enter one of the valid tests from above.  To run Test5 make sure to include which subdirectory you want to specify (ie Test5/Test5a).
 
 This will output a **JSON dump** of a bunch of stuff. Without going into too much detail, the `ValidationPipeline` goes through and tries to compile `.c` files. If successful in compiling **all** files, it attempts to link the generated object _(`.o`)_ files.
 

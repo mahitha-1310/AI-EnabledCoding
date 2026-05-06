@@ -1,6 +1,7 @@
 import os
 from typing import List, Dict, Any
 from Validation.compilation_stage import CompilationStage
+from Validation.static_analysis_stage import StaticAnalysisStage
 from Validation.llm_metric_stage import LLMMetricStage
 from Validation.unit_testing_stage_temp import UnitTestingStage
 
@@ -20,11 +21,14 @@ class ValidationPipeline:
         self.source_dir = os.path.abspath(source_dir)
 
         # Pipeline stages
-        # self.compilation = CompilationStage(
-        #     output_dir=os.path.join(self.output_dir, "compilation/"),
-        #     project_root=self.source_dir
-        # )
-        # self.static_analysis = StaticAnalysisStage(os.path.join(output_dir, "static_analysis/"))
+        self.compilation = CompilationStage(
+            output_dir=os.path.join(self.output_dir, "compilation/"),
+            project_root=self.source_dir
+        )
+        self.static_analysis = StaticAnalysisStage(
+            output_dir=os.path.join(output_dir, "static_analysis/"),
+            project_root=self.source_dir
+        )
 
         # To be implemented in future sprints
         # ====================================
@@ -68,15 +72,18 @@ class ValidationPipeline:
         c_files, h_files, include_dirs, build_tool = self.collect_file_paths()
 
         # Stage 1: Compilation
-        # results["compilation"] = self.compilation.run(
-        #     source_files=c_files,
-        #     header_files=h_files,
-        #     include_dirs=include_dirs,
-        #     build_tool=build_tool
-        # )
+        results["compilation"] = self.compilation.run(
+            source_files=c_files,
+            header_files=h_files,
+            include_dirs=include_dirs,
+            build_tool=build_tool
+        )
 
         # Stage 2: Static Analysis
-        # results["static_analysis"] = self.static_analysis.run()
+        results["static_analysis"] = self.static_analysis.run(
+            source_files=c_files,
+            compile_commands="ValidationTests/Test4/compilation/compile_commands.json"
+        )
 
         # Further steps to be implemented later...
         
