@@ -125,11 +125,14 @@ def customize_pipeline(pipeline: Pipeline) -> None:
 
     def customize_chatbot():
         numargs = {"step":1.0, "min_value":1.0, "format":"%0f"}
+        temprange = {"step":0.001, "min_value":0.0, "max_value":2.0, "format":"%0f"}
 
         mc.display("summarize_after", "The amount of messages that will cause the LLM to summarize.", **numargs)
         mc.display("messages_to_keep", "The amount of messages that won't be summarized.", **numargs)
         mc.display("return_anyway_after", "The amount of attempts the LLM is allowed to have before a forced return.", **numargs)
         mc.display("retry_prompt", "Should the user be asked if they want to continue prompting?", override_type=bool)
+        mc.display("temperature", "How deterministic the model should be. 0.0 - Deterministic, 2.0 - Creative", **temprange)
+        mc.display("timeout", "Amount of seconds the client will wait for a response from the OpenAI API before terminating the connection.")
 
     def customize_validator():
 

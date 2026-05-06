@@ -35,7 +35,9 @@ class Pipeline():
             "summarize_after": 20,
             "messages_to_keep": 10,
             "return_anyway_after": 3,
-            "retry_prompt": True
+            "retry_prompt": True,
+            "temperature": 0.3,
+            "timeout": 120
         })
         self.rag_config = HasaimConfiguration({
             "repository_url": "https://github.com/TheAlgorithms/C",
@@ -46,13 +48,10 @@ class Pipeline():
 
         # Model init
         self._model_name = os.getenv("OPENAI_API_MODEL")
-        model_temperature = float(os.getenv("TEMPERATURE"))
         model_tools = list(TOOLS.values())
         self.model = ChatOpenAI(
             model=self._model_name,
-            temperature=model_temperature,
             base_url=os.getenv("OPENAI_API_BASE"),
-            timeout=int(os.getenv("MODEL_TIMEOUT", 120)),
             max_retries=10
         ).bind_tools(model_tools)
 
@@ -200,6 +199,12 @@ class Pipeline():
 
     def converse_node(self, state: State):
         print("[Pipeline] Model is generating a response...")
+
+        try:
+            self.model.bind(temperature=self.model_config.get("temperature"), timeout=self.model_config.get("timeout"))
+        except Exception:
+            tb.print_exc()
+
         state_updates = {}
         try:
             history = state.get("summarized_messages") or state["messages"]
