@@ -3,6 +3,9 @@ from generation_pipeline import Pipeline
 from utils import *
 import time
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 st.set_page_config(layout="wide", page_title="HASAIM")
 

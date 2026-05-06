@@ -45,7 +45,7 @@ def assert_file(path: Path) -> None:
         raise ValueError(f"Path is not a file: {path}")
 
 def only_folders(path: str) -> bool:
-    return all(os.path.isdir(os.path.join(path, item)) for item in os.listdir(path))
+    return os.path.exists(path) and all(os.path.isdir(os.path.join(path, item)) for item in os.listdir(path))
 
 def read_path(file_path: str) -> str:
     """Read and return the text content of a file, resolved relative to the project root."""

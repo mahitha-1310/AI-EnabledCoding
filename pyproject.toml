@@ -17,6 +17,8 @@ dependencies = [
     "langchain-core>=1.2.10",
     "pytest>=9.0.3",
     "langchain>=1.2.15",
+    "chromadb>=0.4.0",
+    "cohere>=6.1.0",
 ]
 
 [build-system]

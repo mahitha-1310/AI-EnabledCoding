@@ -11,6 +11,7 @@ from typing import Annotated
 from config import HasaimConfiguration
 from rag.rag_orchestrator import RAGRetriever
 from rag_manager import embed_repo
+import traceback as tb
 
 from tools import *
 from utils import *
@@ -46,7 +47,7 @@ class Pipeline():
             temperature=model_temperature,
             base_url=os.getenv("OPENAI_API_BASE"),
             timeout=int(os.getenv("MODEL_TIMEOUT", 120)),
-            max_retries=0
+            max_retries=10
         ).bind_tools(model_tools)
 
         # Pipeline init
@@ -108,6 +109,7 @@ class Pipeline():
                     result = tool_fn.invoke(tool_args)
                 except Exception as e:
                     result = f"Error: {e}"
+                    tb.print_exc()
 
             tool_messages.append(ToolMessage(
                 content=str(result),
@@ -203,13 +205,15 @@ class Pipeline():
                     state_updates["rag_contents"] = rag_data
             else:
                 state_updates["rag_contents"] = None
-
+            
             response = self.model.invoke(
                 [SystemMessage(content=PATH.system_message.replace("{RAGDATA}", rag_data))] + history
             )
         except APITimeoutError:
             print("[Pipeline] WARNING: Model request timed out.")
             response = AIMessage(content="[Error: the model timed out and could not produce a response. Please try again.]")
+        except Exception:
+            tb.print_exc()
 
         state_updates["messages"] = [response]
         return state_updates

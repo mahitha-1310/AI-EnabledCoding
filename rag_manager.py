@@ -1,7 +1,8 @@
 from chromadb.api.models.Collection import Collection
-from rag.embedder import embed_texts
+from rag.embedder import embed_documents
 from rag.git_loader_full import fetch_repo_files_all_branches
 from rag.indexer import preprocess, chunk_lines
+import os
 
 def embed_repo(collection: Collection, repo_url: str, batch_size: int = 64):
 
@@ -34,7 +35,7 @@ def embed_repo(collection: Collection, repo_url: str, batch_size: int = 64):
         batch_metas = metas[i:i+batch_size]
         batch_ids   = ids[i:i+batch_size]
 
-        embeddings = embed_texts(batch_docs)
+        embeddings = embed_documents(batch_docs)
         collection.upsert(
             ids=batch_ids,
             documents=batch_docs,
