@@ -29,17 +29,22 @@ class Pipeline():
     def __init__(self, user_id: str = None):
         self.user_id = user_id
 
-        # Model init
-        self.config = HasaimConfiguration({
+
+        # Config init
+        self.model_config = HasaimConfiguration({
             "summarize_after": 20,
             "messages_to_keep": 10,
             "return_anyway_after": 3,
-            "retrieval_chunks": 6,
-            "retry_prompt": True,
+            "retry_prompt": True
+        })
+        self.rag_config = HasaimConfiguration({
             "repository_url": "https://github.com/TheAlgorithms/C",
+            "retrieval_chunks": 6,
             "batch_size": 64
         })
+        
 
+        # Model init
         self._model_name = os.getenv("OPENAI_API_MODEL")
         model_temperature = float(os.getenv("TEMPERATURE"))
         model_tools = list(TOOLS.values())
@@ -76,7 +81,7 @@ class Pipeline():
 
         attempts_left = state.get("attempts_left", 0)
 
-        if not self.config["retry_prompt"] or attempts_left == 0:
+        if not self.model_config.get("retry_prompt") or attempts_left == 0:
             print("[WARNING]: Code is not guaranteed to be functional.")
             return "insufficient"
 
@@ -89,7 +94,7 @@ class Pipeline():
         return "validate"
     
     def summarization_router(self, state: State):
-        return "summarize" if len(state["messages"]) > self.config["summarize_after"] else "converse"
+        return "summarize" if len(state["messages"]) > self.model_config.get("summarize_after") else "converse"
 
 
     ###############
@@ -125,9 +130,9 @@ class Pipeline():
         return {"messages": tool_messages}
 
     def update_node(self, state: State):
-        url = self.config.get("repository_url")
+        url = self.rag_config.get("repository_url")
         if url and url != self._embedded_url:
-            embed_repo(self.rag.collection, url, self.config.get("batch_size"))
+            embed_repo(self.rag.collection, url, self.rag_config.get("batch_size"))
             self._embedded_url = url
 
         print("[Pipeline] Updating project structure...")
@@ -137,7 +142,7 @@ class Pipeline():
             directory_tree=json.dumps(project_structure["structure"], indent=4)
         )
 
-        trimmed = state["messages"][-self.config["summarize_after"]:]
+        trimmed = state["messages"][-self.model_config.get("summarize_after"):]
 
         new_state = {"structure": project_structure, "messages": trimmed + [SystemMessage(content=tool_message)]}
 
@@ -152,7 +157,7 @@ class Pipeline():
         # Initialize attempts counter on first validation, then decrement on each retry
         attempts_left = state.get("attempts_left")
         if attempts_left is None:
-            attempts_left = self.config["return_anyway_after"]
+            attempts_left = self.model_config.get("return_anyway_after")
         else:
             attempts_left -= 1
 
@@ -167,8 +172,8 @@ class Pipeline():
         print("[Pipeline] Summarizing conversation history...")
         messages = state["messages"]
 
-        summarize = messages[:-self.config["messages_to_keep"]]
-        preserve  = messages[-self.config["messages_to_keep"]:]
+        summarize = messages[:-self.model_config.get("messages_to_keep")]
+        preserve  = messages[-self.model_config.get("messages_to_keep"):]
 
         history = "\n".join(
             f"{msg.__class__.__name__}: {msg.content}"
@@ -206,7 +211,7 @@ class Pipeline():
                     None
                 )
                 if last_human:
-                    new_data = self.rag.retrieve(last_human.content, self.config.get("retrieval_chunks"))
+                    new_data = self.rag.retrieve(last_human.content, self.rag_config.get("retrieval_chunks"))
                     rag_data = self.rag.build_context(new_data)
                     state_updates["rag_contents"] = rag_data
             else:

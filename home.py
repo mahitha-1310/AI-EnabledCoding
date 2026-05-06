@@ -114,18 +114,22 @@ def pipeline_customize(pipeline: Pipeline):
 def customize_pipeline(pipeline: Pipeline) -> None:
     """Allows user to control pipeline."""
 
-    pc = pipeline.config
+    rc = pipeline.rag_config
+    mc = pipeline.model_config
     vc = pipeline.validator.config
+
+    def customize_rag():
+        ragargs = {"step":1.0, "min_value":0.0, "format":"%0f"}
+        rc.display("repository_url", "The repository link to extract files from. RAG will not be used if this is blank.")
+        rc.display("retrieval_chunks", "The amount of RAG chunks that will be used in genrating a response. Set to 0 to disable.", **ragargs)
 
     def customize_chatbot():
         numargs = {"step":1.0, "min_value":1.0, "format":"%0f"}
-        ragargs = {"step":1.0, "min_value":0.0, "format":"%0f"}
 
-        pc.display("summarize_after", "The amount of messages that will cause the LLM to summarize.", **numargs)
-        pc.display("messages_to_keep", "The amount of messages that won't be summarized.", **numargs)
-        pc.display("return_anyway_after", "The amount of attempts the LLM is allowed to have before a forced return.", **numargs)
-        pc.display("retrieval_chunks", "The amount of RAG chunks that will be used in genrating a response. Set to 0 to disable.", **ragargs)
-        pc.display("retry_prompt", "Should the user be asked if they want to continue prompting?", override_type=bool)
+        mc.display("summarize_after", "The amount of messages that will cause the LLM to summarize.", **numargs)
+        mc.display("messages_to_keep", "The amount of messages that won't be summarized.", **numargs)
+        mc.display("return_anyway_after", "The amount of attempts the LLM is allowed to have before a forced return.", **numargs)
+        mc.display("retry_prompt", "Should the user be asked if they want to continue prompting?", override_type=bool)
 
     def customize_validator():
 
@@ -172,8 +176,10 @@ def customize_pipeline(pipeline: Pipeline) -> None:
         vc.display("check_only", override_type=bool, help="When enabled, clang-format checks formatting but makes no changes to source files. Disable to have clang-format automatically reformat the code.")
         vc.display("style", override_type=list, help="The clang-format style guide used to check or reformat the code. LLVM and Google are the most commonly used for C projects.")
     
-    chat, valid = st.tabs(["Chatbot", "Validator"])
+    rag, chat, valid = st.tabs(["RAG", "Chatbot", "Validator"])
 
+    with rag:
+        customize_rag()
     with chat:
         customize_chatbot()
     with valid:
