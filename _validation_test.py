@@ -1,5 +1,4 @@
 from Validation.validation_pipeline import ValidationPipeline
-from Validation.compilation_stage import CompilationStage
 import os
 import json
 
@@ -12,7 +11,7 @@ if (not os.path.exists("ValidationTests/" + test_dir)) or (not test_dir.strip())
 
 # For LLM Metric only made it work for Test 5.
 prompt = None
-if "Test5/Test5d/" or "Test5/Test5e/" in test_dir:
+if "Test5/Test5d/" in test_dir or "Test5/Test5e/" in test_dir:
     prompt = """
 Create a small high-assurance C calculator library.
 

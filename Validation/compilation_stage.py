@@ -107,6 +107,8 @@ class CompilationStage:
             compile_commands_path = os.path.join(self.project_root, "compile_commands.json")
             if not os.path.isfile(compile_commands_path):
                 compile_commands_path = None
+            else:
+                self._filter_compile_commands(compile_commands_path)
 
             # Attempt to find generated executable (if any)
             executable_path = None
@@ -179,6 +181,25 @@ class CompilationStage:
         summary_path = os.path.join(self.logs_dir, "summary.json")
         with open(summary_path, "w") as f:
             json.dump(results, f, indent=4)
+
+    def _filter_compile_commands(self, path: str) -> None:
+        """
+        Remove internal clang -cc1 entries from compile_commands.json.
+
+        `bear` captures both the high-level driver invocation and the internal
+        cc1 subprocess. The cc1 entries contain raw flags like `-mrelocation-model
+        pic` where `pic` is the *value*, not a filename — but clang-tidy
+        interprets it as a file to read, producing spurious errors. Keeping only
+        the driver-level entries fixes static analysis.
+        """
+        try:
+            with open(path, "r") as f:
+                entries = json.load(f)
+            cleaned = [e for e in entries if "-cc1" not in e.get("arguments", [])]
+            with open(path, "w") as f:
+                json.dump(cleaned, f, indent=2)
+        except Exception:
+            pass  # If filtering fails, leave the file as-is
 
     def _detect_unsupported_compiler(self, stderr: str) -> Optional[str]:
         """

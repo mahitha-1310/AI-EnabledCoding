@@ -1,10 +1,13 @@
 import os
+import json
+import subprocess
 from typing import List, Dict, Any
+from utils import fmt_field
 from Validation.compilation_stage import CompilationStage
 from Validation.static_analysis_stage import StaticAnalysisStage
 from Validation.dynamic_analysis_stage import DynamicAnalysisStage
 from Validation.formatting_stage import FormattingStage
-from Validation.llm_metric_stage import LLMMetricStage
+from Validation.unit_testing_stage import UnitTestingStage
 from config import HasaimConfiguration, iter_list, iter_multilist
 
 class ValidationPipeline:
@@ -58,16 +61,20 @@ class ValidationPipeline:
             logs_dir=os.path.join(self.logs_dir, "formatting/"),
             artifacts_dir=os.path.join(self.artifacts_dir, "formatting/")
         )
-
-        # To be implemented in future sprints
-        # ====================================
-        # self.unit_tester = UnitTestStage(output_dir)
-
-        # self.llm = LLMMetricStage(
-        #     output_dir=os.path.join(self.output_dir, "LLMMetrics/"),
-        #     project_root=self.source_dir,
-        #     prompt_text=prompt
-        # )
+        self.unit_tester = UnitTestingStage(
+            output_dir=os.path.join(self.artifacts_dir, "unit_testing/"),
+            project_root=self.source_dir
+        )
+        self.prompt_text = prompt
+        if prompt:
+            from Validation.llm_metric_stage import LLMMetricStage
+            self.llm = LLMMetricStage(
+                output_dir=os.path.join(self.artifacts_dir, "llm_metrics/"),
+                project_root=self.source_dir,
+                prompt_text=prompt
+            )
+        else:
+            self.llm = None
 
     def run(self) -> Dict[str, Dict[str, Any]]:
         """
@@ -85,7 +92,7 @@ class ValidationPipeline:
 
         # Containers to collect source code and header
         # files from LLM/output directory
-        c_files, h_files, include_dirs = self._collect_file_paths()
+        c_files, _, _ = self._collect_file_paths()
 
         # Guard: require at least one .c file before attempting any stage
         if not c_files:
@@ -100,7 +107,7 @@ class ValidationPipeline:
             }
 
         # Stage 1: Compilation
-        print("[Validation] Stage 1/4: Compiling project...")
+        print("[Validation] Stage 1/5: Compiling project...")
         results["compilation"] = self.compilation.run()
 
         # Surface structured compilation errors (missing Makefile, unsupported compiler)
@@ -115,7 +122,7 @@ class ValidationPipeline:
 
         # Stage 2: Static Analysis
         # `bear` deposits `compile_commands.json` in the project root
-        print("[Validation] Stage 2/4: Running static analysis...")
+        print("[Validation] Stage 2/5: Running static analysis...")
         results["static_analysis"] = self.static_analysis.run(
             source_files=c_files,
             compile_commands=self.source_dir,
@@ -125,7 +132,7 @@ class ValidationPipeline:
         print(f"[Validation] Static analysis: {status}")
 
         # Stage 3: Dynamic Analysis
-        print("[Validation] Stage 3/4: Running dynamic analysis...")
+        print("[Validation] Stage 3/5: Running dynamic analysis...")
         exe_path = results["compilation"].get("executable_path")
         # GUARD: If compilation failed and no executable was produced, skip dynamic analysis stage
         if exe_path is None:
@@ -144,21 +151,80 @@ class ValidationPipeline:
             status = "OK" if results["dynamic_analysis"].get("overall_success") else "FAILED"
             print(f"[Validation] Dynamic analysis: {status}")
 
-        # Stage 4: Formatting
-        print("[Validation] Stage 4/4: Checking formatting...")
+        # Stage 4: Formatting — auto-format in-place first, then verify
+        print("[Validation] Stage 4/5: Checking formatting...")
+        style = self.config.list_item("style")
+        self._auto_format_files(c_files, style)
         results["formatting"] = self.formatting_stage.run(
             source_files=c_files,
-            check_only=self.config["check_only"],
-            style=self.config.list_item("style")
+            check_only=True,
+            style=style
         )
         status = "OK" if results["formatting"].get("overall_success") else "FAILED"
         print(f"[Validation] Formatting: {status}")
 
-        # Further steps to be implemented later...
+        # Stage 5: Unit Testing
+        print("[Validation] Stage 5/5: Running unit tests...")
+        unit_testing_logs_dir = os.path.join(self.logs_dir, "unit_testing/")
+        os.makedirs(unit_testing_logs_dir, exist_ok=True)
+        try:
+            results["unit_testing"] = self.unit_tester.run()
+        except Exception as e:
+            results["unit_testing"] = {
+                "passed": False,
+                "tests_run": 0,
+                "failures": 0,
+                "errors": [{"stage": "generate", "file": None, "message": str(e)}]
+            }
+        with open(os.path.join(unit_testing_logs_dir, "summary.json"), "w") as f:
+            json.dump(results["unit_testing"], f, indent=4)
+        self._write_unit_testing_log(unit_testing_logs_dir, results["unit_testing"])
+        status = "OK" if results["unit_testing"].get("passed") else "FAILED"
+        print(f"[Validation] Unit testing: {status}")
 
-        # results["LLMMetrics"] = self.llm.run()
+        # Stage 6: LLM Metrics (only when a prompt was provided)
+        if self.llm is not None:
+            print("[Validation] Stage 6/6: Running LLM metrics...")
+            llm_logs_dir = os.path.join(self.logs_dir, "llm_metrics/")
+            os.makedirs(llm_logs_dir, exist_ok=True)
+            results["llm_metrics"] = self.llm.run()
+            with open(os.path.join(llm_logs_dir, "summary.json"), "w") as f:
+                json.dump(results["llm_metrics"], f, indent=4)
+            status = "OK" if results["llm_metrics"].get("success") else "FAILED"
+            print(f"[Validation] LLM metrics: {status}")
 
         return results
+
+    def _write_unit_testing_log(self, logs_dir: str, result: Dict[str, Any]) -> None:
+        log_path = os.path.join(logs_dir, "unit_testing.log")
+        with open(log_path, "w") as f:
+            f.write(fmt_field("passed", result.get("passed", False)))
+            f.write(fmt_field("tests_run", result.get("tests_run", 0)))
+            f.write(fmt_field("failures", result.get("failures", 0)))
+
+            errors = result.get("errors", [])
+            if not errors:
+                f.write("errors:\n(none)\n")
+            else:
+                for err in errors:
+                    stage = err.get("stage", "unknown")
+                    file  = err.get("file") or "(no file)"
+                    msg   = err.get("message", "")
+                    f.write(f"error [{stage}] {file}:\n")
+                    divider = "-" * 60
+                    body = msg.strip() if msg.strip() else "(no message)"
+                    f.write(f"{divider}\n{body}\n{divider}\n\n")
+
+    def _auto_format_files(self, c_files: List[str], style: str = "LLVM") -> None:
+        """Apply clang-format in-place to all source files before the format check."""
+        for file_path in c_files:
+            try:
+                subprocess.run(
+                    ["clang-format", f"--style={style}", "-i", file_path],
+                    capture_output=True, text=True
+                )
+            except Exception:
+                pass
 
     def _collect_file_paths(self) -> tuple[List[str], List[str], List[str]]:
         """
@@ -177,7 +243,7 @@ class ValidationPipeline:
         include_dirs = set()
 
         # Traverse all file paths in source directory
-        for root, dirs, files in os.walk(self.source_dir, topdown=True):
+        for root, _, files in os.walk(self.source_dir, topdown=True):
             # Append ABSOLUTE PATHS to all pertinent files
             for filename in files:
                 if filename.endswith(".c"):

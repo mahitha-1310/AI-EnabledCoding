@@ -31,11 +31,8 @@ Main unit testing stage responsible for:
 
         self.generated_code_dir = self.project_root
         self.unit_test_dir = self.output_dir
-        self.logs_dir = os.path.join(self.unit_test_dir, "logs")
 
         os.makedirs(self.output_dir, exist_ok=True)
-        os.makedirs(self.unit_test_dir, exist_ok=True)
-        os.makedirs(self.logs_dir, exist_ok=True)
 
         self._function_cache: Dict[str, Set[str]] = {}
 
@@ -72,7 +69,8 @@ Main unit testing stage responsible for:
         if not os.path.isdir(generated_code_dir):
             raise RuntimeError(f"Source code directory does not exist: {generated_code_dir}")
 
-        client = OpenAI(api_key=api_key, base_url=base_url)
+        timeout = float(os.getenv("MODEL_TIMEOUT", 120))
+        client = OpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
 
         c_files = self._collect_c_files(generated_code_dir)
         h_files = self._collect_h_files(generated_code_dir)
@@ -110,6 +108,8 @@ CRITICAL REQUIREMENTS:
 - Include <assert.h>, <stdio.h>, <stdlib.h>, <limits.h>, <string.h>, <ctype.h>, <math.h> as needed
 - If the test uses malloc(), free(), calloc(), realloc(), or exit(), include <stdlib.h>
 - Do NOT use signal handling, sigaction(), sigemptyset(), sigsetjmp(), siglongjmp(), or SIGFPE.
+- Do NOT use POSIX file descriptor operations: dup(), fileno(), pipe(), fork(), or any function requiring <unistd.h>.
+- Use ONLY standard C99 library functions. All tests must compile with -std=c99 and no POSIX extensions.
 - Declare function prototypes if no header file exists.
 - Provide a main() function that returns 0 on success.
 - TEST ALL FUNCTIONS in the source file with multiple test cases.
@@ -188,6 +188,7 @@ Please regenerate the test and fix the compilation error.
             safe_test_name = self._safe_test_file_name(relative_name)
             output_path = os.path.join(self.unit_test_dir, safe_test_name)
 
+            os.makedirs(self.unit_test_dir, exist_ok=True)
             Path(output_path).write_text(test_code, encoding="utf-8")
             print(f"Generated tests for {relative_name}, saved to {output_path}")
 
@@ -263,7 +264,6 @@ Please regenerate the test and fix the compilation error.
                 "-g",
                 "-Wall",
                 "-Wextra",
-                "-fsanitize=address",
                 "-c",
                 source_path,
                 *self._include_flags(generated_code_dir),
@@ -314,7 +314,6 @@ Please regenerate the test and fix the compilation error.
                 "-g",
                 "-Wall",
                 "-Wextra",
-                "-fsanitize=address",
                 test_path,
                 *object_files_to_link,
                 *self._include_flags(generated_code_dir),
@@ -361,18 +360,6 @@ Please regenerate the test and fix the compilation error.
             and results["failures"] == 0
             and len(results["errors"]) == 0
         )
-
-        try:
-            log_path = os.path.join(self.logs_dir, "unit_testing_results.json")
-            with open(log_path, "w", encoding="utf-8") as f:
-                json.dump(results, f, indent=4)
-            print(f"Saved unit test results to {log_path}")
-        except Exception as e:
-            results["errors"].append({
-                "stage": "logging",
-                "file": None,
-                "message": f"Failed to write results log: {e}"
-            })
 
         return results
 
@@ -576,7 +563,6 @@ Please regenerate the test and fix the compilation error.
             "-g",
             "-Wall",
             "-Wextra",
-            "-fsanitize=address",
             "-c",
             tmp_path,
             *self._include_flags(generated_code_dir),
@@ -626,8 +612,7 @@ Please regenerate the test and fix the compilation error.
                         "-g",
                         "-Wall",
                         "-Wextra",
-                        "-fsanitize=address",
-                        "-c",
+                                "-c",
                         retry_tmp_path,
                         *self._include_flags(generated_code_dir),
                         "-o",

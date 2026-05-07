@@ -122,6 +122,13 @@ class LLMMetricStage:
             json_file_sim = {"file_similarity": similarity}
             with open(log_path_file_sim, "w") as f:
                 json.dump(json_file_sim, f, indent=4)
+
+        return {
+            "success": succ == 0,
+            "combined_metric": combined_metric,
+            "llm_avg_norm": llm_norm,
+            "total_similarity": output_sim
+        }
                 
                 
     def final_calculations(self, llm_norm_val: float,
