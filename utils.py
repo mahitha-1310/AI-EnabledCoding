@@ -88,12 +88,14 @@ class _PathData:
         FEEDBACK_PROMPT =      os.path.join(self.prompts_path, "feedback_prompt.md")
         STRUCTURE_PROMPT =     os.path.join(self.prompts_path, "structure_prompt.md")
         SUMMARIZATION_PROMPT = os.path.join(self.prompts_path, "summarization_prompt.md")
+        VALIDATION_PROMPT =    os.path.join(self.prompts_path, "validation_prompt.md")
 
         # Prompts
         self.system_message = read_path(SYSTEM_PROMPT)
         self.feedback_message = read_path(FEEDBACK_PROMPT)
         self.structure_message = read_path(STRUCTURE_PROMPT)
         self.summarization_message = read_path(SUMMARIZATION_PROMPT)
+        self.validation_message = read_path(VALIDATION_PROMPT)
     
     def make_dir(self, envvar: str):
         if not os.getenv(envvar):

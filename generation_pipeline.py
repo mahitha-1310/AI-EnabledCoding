@@ -217,16 +217,7 @@ class Pipeline():
                 stage_lines.append(f"  {stage}: {'OK' if ok else 'FAILED (warnings only — code was accepted)'}")
         validation_summary = "\n".join(stage_lines) if stage_lines else "  (no validation data)"
 
-        final_prompt = (
-            "All work is complete. Validation pipeline results:\n"
-            f"{validation_summary}\n\n"
-            "Now deliver your final response to the user. "
-            "Follow the 7-step Response Template from your system instructions exactly — "
-            "cover what files you found, the project structure, what the user requested, "
-            "how you planned and implemented the solution (file by file), any caveats, "
-            "and how to verify the result. "
-            "Do NOT use any tools. Do NOT give a one-line summary."
-        )
+        final_prompt = get_user_paths().validation_message.replace("{validation_summary}", validation_summary)
 
         history = state.get("summarized_messages") or state["messages"]
         try:
