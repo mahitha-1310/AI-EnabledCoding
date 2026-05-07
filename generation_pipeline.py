@@ -16,6 +16,14 @@ import traceback as tb
 from tools import *
 from utils import *
 
+_shared_checkpointer = None
+
+def _get_checkpointer():
+    global _shared_checkpointer
+    if _shared_checkpointer is None:
+        _shared_checkpointer = MemorySaver()
+    return _shared_checkpointer
+
 class State(TypedDict):
     rag_url: str
     rag_contents: str
@@ -58,7 +66,7 @@ class Pipeline():
         # Path init
         self.paths = get_user_paths(user_id)
         # Pipeline init
-        self.graph = self.build(MemorySaver())
+        self.graph = self._build(_get_checkpointer())
         print(self.graph.get_graph().draw_ascii())
         # Validation init
         self.validator = ValidationPipeline(
@@ -68,9 +76,6 @@ class Pipeline():
         # RAG init
         self.rag = RAGRetriever()
         self._embedded_url: str | None = None
-    
-    def get_model_name(self):
-        return self._model_name
 
     ### ROUTERS ###
 
@@ -153,10 +158,9 @@ class Pipeline():
     def validate_node(self, state: State):
         print("[Pipeline] Running validation pipeline...")
 
-        # Initialize attempts counter on first validation, then decrement on each retry
         attempts_left = state.get("attempts_left")
         if attempts_left is None:
-            attempts_left = self.model_config.get("return_anyway_after")
+            attempts_left = self.model_config.get("return_anyway_after") - 1
         else:
             attempts_left -= 1
 
@@ -180,7 +184,7 @@ class Pipeline():
             if msg.content and not isinstance(msg, SystemMessage)
         )
 
-        summary = self.model.invoke([HumanMessage(content=PATH.summarization_message.format(history=history))])
+        summary = self.model.invoke([HumanMessage(content=get_global_prompts().summarization_message.format(history=history))])
 
         summary_message = SystemMessage(
             content=f"[Conversation summary so far]: {summary.content}"
@@ -193,7 +197,7 @@ class Pipeline():
         
         summary_json = json.dumps(state.get("validations", [{}])[-1])
 
-        response = self.model.invoke([HumanMessage(content=PATH.feedback_message.format(summary=summary_json))])
+        response = self.model.invoke([HumanMessage(content=get_global_prompts().feedback_message.format(summary=summary_json))])
 
         return {"messages": [SystemMessage(content=response.content)]}
 
@@ -206,6 +210,8 @@ class Pipeline():
             tb.print_exc()
 
         state_updates = {}
+        response = None
+        
         try:
             history = state.get("summarized_messages") or state["messages"]
 
@@ -223,20 +229,61 @@ class Pipeline():
                 state_updates["rag_contents"] = None
             
             response = self.model.invoke(
-                [SystemMessage(content=PATH.system_message.replace("{RAGDATA}", rag_data))] + history
+                [SystemMessage(content=get_global_prompts().system_message.replace("{RAGDATA}", rag_data))] + history
             )
         except APITimeoutError:
             print("[Pipeline] WARNING: Model request timed out.")
             response = AIMessage(content="[Error: the model timed out and could not produce a response. Please try again.]")
-        except Exception:
+        except Exception as e:
+            print(f"[Pipeline] ERROR: Failed to generate response: {e}")
             tb.print_exc()
+            response = AIMessage(content=f"[Error: Failed to generate response: {str(e)}]")
+        
+        if response is None:
+            response = AIMessage(content="[Error: No response generated. Please try again.]")
 
         state_updates["messages"] = [response]
         return state_updates
 
     #############
+    
+    def _reflect(self, response):
+        last = response['messages'][-1]
+        response_text = ""
+        validations = response.get("validations", [])
+        
+        if last.content:
+            response_text = last.content
+        else:
+            if validations:
+                v = validations[-1]
+                lines = ["The model produced no text response. Validation summary:"]
+                for stage, result in v.items():
+                    if isinstance(result, dict):
+                        ok = result.get("overall_success", result.get("success", "?"))
+                        lines.append(f"  {stage}: {'OK' if ok else 'FAILED'}")
+                response_text = "\n".join(lines)
+            else:
+                response_text = "No response generated."
+        
+        attempts_left = response.get("attempts_left", 0)
+        
+        last_validation_failed = len(validations) > 0 and not grade(output_path=project_path(self.paths.testing_path))
+        needs_retry_prompt = (
+            self.model_config.get("retry_prompt") and
+            attempts_left > 0 and
+            last_validation_failed
+        )
+        
+        metadata = {
+            "attempts_left": attempts_left,
+            "needs_retry_prompt": needs_retry_prompt,
+            "validations_count": len(validations)
+        }
 
-    def build(self, checkpointer):
+        return response_text, metadata
+
+    def _build(self, checkpointer):
         graph_builder = StateGraph(State)
 
         # NODES
@@ -271,28 +318,9 @@ class Pipeline():
         return graph_builder.compile(checkpointer=checkpointer)
 
     def run(self, user_input: str, user_id: str):
-
-        if not self.graph:
-            self.build(MemorySaver())
-
-        response = self.graph.invoke(
-            {"messages": [HumanMessage(content=user_input)]},
-            {"configurable": {"thread_id": user_id}}
+        return self._reflect(
+            self.graph.invoke(
+                {"messages": [HumanMessage(content=user_input)]},
+                {"configurable": {"thread_id": user_id}}
+            )
         )
-
-        last = response['messages'][-1]
-        if last.content:
-            return last.content
-
-        # Model returned no content — synthesize a summary from validation results
-        validations = response.get("validations", [])
-        if validations:
-            v = validations[-1]
-            lines = ["(The model produced no text response. Validation summary:)"]
-            for stage, result in v.items():
-                if isinstance(result, dict):
-                    ok = result.get("overall_success", result.get("success", "?"))
-                    lines.append(f"  {stage}: {'OK' if ok else 'FAILED'}")
-            return "\n".join(lines)
-
-        return "(No response generated.)"

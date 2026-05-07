@@ -210,7 +210,7 @@ class TestGenerationPipelineInstance:
         with patch.object(self.pipeline.validator, 'run', return_value={"success": True}):
             state = {"attempts_left": None, "validations": []}
             result = self.pipeline.validate_node(state)
-        assert result["attempts_left"] == self.pipeline.config["return_anyway_after"]-1
+        assert result["attempts_left"] == self.pipeline.model_config["return_anyway_after"]-1
 
     def validate_node_decrements_attempts(self):
         with patch.object(self.pipeline.validator, 'run', return_value={"success": True}):

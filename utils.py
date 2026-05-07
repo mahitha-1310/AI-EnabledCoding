@@ -63,11 +63,10 @@ def project_path(path: str) -> Path:
 class _PathData:
     def __init__(self, user_id: str = None):
         self.summary_path = os.path.join("logs", "summary.json")
-        self.workshop_path = "workshop"
         self.prompts_path = "prompts"
         
         if user_id:
-            user_session_path = os.path.join(self.workshop_path, "sessions", user_id)
+            user_session_path = os.path.join("sessions", user_id)
         else:
             user_session_path = self.workshop_path
 
@@ -108,7 +107,13 @@ def get_user_paths(user_id: str = None) -> _PathData:
         return _PathData()
     return _PathData(user_id)
 
-PATH = _PathData()
+def get_global_prompts() -> _PathData:
+    global _global_prompts
+    if _global_prompts is None:
+        _global_prompts = _PathData()
+    return _global_prompts
+
+_global_prompts = None
 
 def get_path(path: str) -> Path:
     """Resolve a path relative to the EDITOR_PATH environment variable.
@@ -121,7 +126,7 @@ def get_path(path: str) -> Path:
     if requested_path.is_absolute():
         return requested_path
 
-    tail = PATH.editor_path
+    tail = get_global_prompts().editor_path
     if tail is None:
         raise ValueError("`EDITOR_PATH` is not set. Please provide a valid directory path.")
 
@@ -307,29 +312,3 @@ def generate_user_id() -> str:
             st.session_state.user_id = new_id
             st.query_params["uid"] = new_id
     return st.session_state.user_id
-
-@st.dialog("LLM Attempt Limit Reached")
-def request_retry(num_attempts: int) -> bool:
-    """Ask user if they should continue with prompting the llm."""
-
-    st.write("How would you like to proceed?")
-    choice = st.radio(
-        label="Select an option:",
-        options=[
-            "Stop Attempting", 
-            "Attempt One More Time", 
-            f"Attempt {num_attempts} More Times"
-        ],
-        index=0
-    )
-    
-    if st.button("Confirm", disabled=choice is None):
-        st.session_state.confirmed_choice = choice
-        st.rerun()
-    
-    if choice == "Attempt One More Time":
-        return 1
-    elif choice == f"Attempt {num_attempts} More Times":
-        return num_attempts
-    else:
-        return 0

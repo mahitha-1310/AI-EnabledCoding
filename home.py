@@ -27,6 +27,46 @@ def stream(response, delay: float):
         yield word
         time.sleep(delay)
 
+@st.dialog("LLM Attempt Limit Reached")
+def request_retry(num_attempts: int) -> int:
+    """Ask user if they should continue with prompting the llm.
+    
+    Returns:
+        Number of additional attempts to allow (0, 1, or num_attempts)
+    """
+
+    if "retry_dialog_choice" not in st.session_state:
+        st.session_state.retry_dialog_choice = None
+    
+    st.write("How would you like to proceed?")
+    choice = st.radio(
+        label="Select an option:",
+        options=[
+            "Stop Attempting", 
+            "Attempt One More Time", 
+            f"Attempt {num_attempts} More Times"
+        ],
+        index=0,
+        key="retry_radio"
+    )
+    
+    if st.button("Confirm", disabled=choice is None, key="retry_confirm"):
+        st.session_state.retry_dialog_choice = choice
+        st.rerun()
+    
+    if st.session_state.retry_dialog_choice:
+        confirmed_choice = st.session_state.retry_dialog_choice
+        st.session_state.retry_dialog_choice = None
+        
+        if confirmed_choice == "Attempt One More Time":
+            return 1
+        elif confirmed_choice == f"Attempt {num_attempts} More Times":
+            return num_attempts
+        else:
+            return 0
+    
+    return 0
+
 def chatbot():
     if 'messages' not in st.session_state:
         st.session_state.messages = []
@@ -40,7 +80,6 @@ def chatbot():
         prompt = st.chat_input(CHATBOT_MESSAGE, key="chat_input")
         
         if prompt and not prompt == "":
-            # Add prompt to chat
             st.chat_message('user').markdown(prompt)
             st.session_state.messages.append({'role': 'user', 'content': prompt})
 
@@ -48,12 +87,12 @@ def chatbot():
                 clear_directories([user_paths.editor_path, user_paths.output_path])
                 transfer(source=user_paths.input_path, destination=user_paths.editor_path)
                 
-                # Produce response
                 response = None
+                metadata = None
                 try:
                     with st.chat_message('assistant'):
                         with st.spinner("Working on it... (check terminal for live progress)", show_time=True):
-                            response = pipeline.run(
+                            response, metadata = pipeline.run(
                                 user_input=prompt,
                                 user_id=user_id
                             )
@@ -63,6 +102,7 @@ def chatbot():
                     st.error(error_msg)
                     print(tb.format_exc())
                     response = error_msg
+                    metadata = {"needs_retry_prompt": False, "attempts_left": 0}
                 
                 try:
                     clear_directory(user_paths.input_path)
@@ -74,6 +114,18 @@ def chatbot():
 
                 if response:
                     st.session_state.messages.append({'role': 'assistant', 'content': response})
+                
+                if metadata and metadata.get("needs_retry_prompt"):
+                    attempts_left = metadata.get("attempts_left", 0)
+                    retry_choice = request_retry(attempts_left)
+                    
+                    if retry_choice > 0:
+                        st.info(f"Retrying with {retry_choice} additional attempt(s)...")
+                        st.success(f"Please enter your request again to retry.")
+                    else:
+                        # User chose to stop
+                        st.warning("Retry stopped as requested.")
+                
                 st.rerun()
                 
             except Exception as e:
@@ -131,7 +183,7 @@ def customize_pipeline(pipeline: Pipeline) -> None:
         mc.display("messages_to_keep", "The amount of messages that won't be summarized.", **numargs)
         mc.display("return_anyway_after", "The amount of attempts the LLM is allowed to have before a forced return.", **numargs)
         mc.display("retry_prompt", "Should the user be asked if they want to continue prompting?", override_type=bool)
-        mc.display("temperature", "How deterministic the model should be. 0.0 - Deterministic, 2.0 - Creative", **temprange)
+        mc.display("temperature", "How deterministic the model should be.\n0.0 - Deterministic, 2.0 - Creative", **temprange)
         mc.display("timeout", "Amount of seconds the client will wait for a response from the OpenAI API before terminating the connection.")
 
     def customize_validator():
