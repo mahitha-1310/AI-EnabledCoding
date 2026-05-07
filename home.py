@@ -133,20 +133,20 @@ def chatbot():
                 st.error(f"Critical error: {str(e)}")
                 print(f"Critical error traceback: {traceback.format_exc()}")
 
-def codebase_download(user_paths):
-    disable = only_folders(user_paths.output_path)
-    text = "Nothing to Download" if disable else "Download Codebase"
+def download(path, downloadable_name:str):
+    disable = only_folders(path)
+    text = f"No {downloadable_name} to Download" if disable else f"Download {downloadable_name}"
     st.download_button(
         label=text,
-        data=create_zip(project_path(user_paths.output_path)),
-        file_name=f"{os.path.basename(user_paths.output_path)}.zip",
+        data=create_zip(project_path(path)),
+        file_name=f"{os.path.basename(path)}.zip",
         mime="application/zip",
         use_container_width=True,
         disabled=disable
     )
 
 def codebase_clear(user_paths):
-    disable = only_folders(project_path(user_paths.editor_path)) and only_folders(project_path(user_paths.input_path))
+    disable = only_folders(project_path(user_paths.workshop_path))
     text = "Nothing to Clear" if disable else "Clear Codebase"
     if st.button(text, disabled=disable, use_container_width=True):
         try:
@@ -290,8 +290,12 @@ if __name__ == "__main__":
         with cm:
             file_uploader(project_path(user_paths.test_path), "Upload Unit Tests")
         with cr:
-            codebase_download(user_paths)
-            codebase_clear(user_paths)
             pipeline_customize(pipeline=pipeline)
+            code_col, logs_col = st.columns(2)
+            with code_col:
+                download(user_paths.output_path, "Codebase")
+            with logs_col:
+                download(user_paths.testing_path, "Logs")
+            codebase_clear(user_paths)
     with edit_col:
         chatbot()

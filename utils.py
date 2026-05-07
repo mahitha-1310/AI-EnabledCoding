@@ -64,6 +64,7 @@ class _PathData:
     def __init__(self, user_id: str = None):
         self.summary_path = os.path.join("logs", "summary.json")
         self.prompts_path = "prompts"
+        self.workshop_path = "workshop"
         
         if user_id:
             user_session_path = os.path.join("sessions", user_id)
