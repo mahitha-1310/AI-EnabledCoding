@@ -1,4 +1,4 @@
-import os, json
+import os, json, shutil
 from typing_extensions import TypedDict
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from openai import APITimeoutError
@@ -160,7 +160,11 @@ class Pipeline():
 
         attempts_left = state.get("attempts_left")
         if attempts_left is None:
-            attempts_left = self.model_config.get("return_anyway_after") - 1
+            attempts_left = self.model_config.get("return_anyway_after")-1
+            # Clear stale unit test artifacts so tests are regenerated for the current code
+            unit_test_artifacts = os.path.join(get_user_paths().testing_path, "artifacts", "unit_testing")
+            if os.path.isdir(unit_test_artifacts):
+                shutil.rmtree(unit_test_artifacts)
         else:
             attempts_left -= 1
 
@@ -200,6 +204,40 @@ class Pipeline():
         response = self.model.invoke([HumanMessage(content=get_global_prompts().feedback_message.format(summary=summary_json))])
 
         return {"messages": [SystemMessage(content=response.content)]}
+
+    def final_response_node(self, state: State):
+        print("[Pipeline] Generating final response...")
+        validations = state.get("validations", [])
+        last_validation = validations[-1] if validations else {}
+
+        stage_lines = []
+        for stage, result in last_validation.items():
+            if isinstance(result, dict):
+                ok = result.get("overall_success", result.get("success", "?"))
+                stage_lines.append(f"  {stage}: {'OK' if ok else 'FAILED (warnings only — code was accepted)'}")
+        validation_summary = "\n".join(stage_lines) if stage_lines else "  (no validation data)"
+
+        final_prompt = (
+            "All work is complete. Validation pipeline results:\n"
+            f"{validation_summary}\n\n"
+            "Now deliver your final response to the user. "
+            "Follow the 7-step Response Template from your system instructions exactly — "
+            "cover what files you found, the project structure, what the user requested, "
+            "how you planned and implemented the solution (file by file), any caveats, "
+            "and how to verify the result. "
+            "Do NOT use any tools. Do NOT give a one-line summary."
+        )
+
+        history = state.get("summarized_messages") or state["messages"]
+        try:
+            response = self.model.invoke(
+                [SystemMessage(content=get_user_paths().system_message)] + history + [HumanMessage(content=final_prompt)]
+            )
+        except APITimeoutError:
+            print("[Pipeline] WARNING: Model request timed out during final response.")
+            response = AIMessage(content="[Error: the model timed out while generating the final response.]")
+
+        return {"messages": [response]}
 
     def converse_node(self, state: State):
         print("[Pipeline] Model is generating a response...")
@@ -300,6 +338,8 @@ class Pipeline():
         graph_builder.add_node("validate", self.validate_node)
         # Handle validation pipeline failure
         graph_builder.add_node("sendback", self.sendback_node)
+        # Generate final user-facing response after validation completes
+        graph_builder.add_node("final_response", self.final_response_node)
 
         # EDGES
 
@@ -312,8 +352,9 @@ class Pipeline():
 
         graph_builder.add_conditional_edges("converse", self.post_converse_router, {"tools": "tools", "validate": "validate"})
         graph_builder.add_edge("tools", "update")
-        # Once LLM thinks code is ready, it can send to validation pipeline
-        graph_builder.add_conditional_edges("validate", self.grading_router, {"pass": END, "fail": "sendback", "insufficient": END})
+        # Once LLM thinks code is ready, validate; then always generate a final response
+        graph_builder.add_conditional_edges("validate", self.grading_router, {"pass": "final_response", "fail": "sendback", "insufficient": "final_response"})
+        graph_builder.add_edge("final_response", END)
 
         return graph_builder.compile(checkpointer=checkpointer)
 
