@@ -42,6 +42,7 @@ class ValidationPipeline:
             "check_only": True,
             "style": iter_list(["LLVM", "Google"], 0)
         })
+        self.prompt_text = prompt
 
         # Pipeline stages
         self.compilation = CompilationStage(
@@ -63,18 +64,38 @@ class ValidationPipeline:
         )
         self.unit_tester = UnitTestingStage(
             output_dir=os.path.join(self.artifacts_dir, "unit_testing/"),
-            project_root=self.source_dir
+            project_root=self.source_dir,
+            prompt_text=prompt
         )
+        self.llm = None
+        self.llm_init_error = None
+        self._refresh_llm_stage()
+
+    def set_prompt_text(self, prompt: str | None) -> None:
+        """Update the prompt context shared by prompt-aware validation stages."""
         self.prompt_text = prompt
-        if prompt:
+        self.unit_tester.set_prompt_text(prompt)
+        self._refresh_llm_stage()
+
+    def _refresh_llm_stage(self) -> None:
+        """Lazily initialize the optional LLM metric stage when prompt context exists."""
+        if not self.prompt_text:
+            self.llm = None
+            self.llm_init_error = None
+            return
+
+        try:
             from Validation.llm_metric_stage import LLMMetricStage
+
             self.llm = LLMMetricStage(
                 output_dir=os.path.join(self.artifacts_dir, "llm_metrics/"),
                 project_root=self.source_dir,
-                prompt_text=prompt
+                prompt_text=self.prompt_text
             )
-        else:
+            self.llm_init_error = None
+        except Exception as exc:
             self.llm = None
+            self.llm_init_error = f"{type(exc).__name__}: {exc}"
 
     def run(self) -> Dict[str, Dict[str, Any]]:
         """
@@ -183,11 +204,21 @@ class ValidationPipeline:
         print(f"[Validation] Unit testing: {status}")
 
         # Stage 6: LLM Metrics (only when a prompt was provided)
-        if self.llm is not None:
+        if self.prompt_text:
             print("[Validation] Stage 6/6: Running LLM metrics...")
             llm_logs_dir = os.path.join(self.logs_dir, "llm_metrics/")
             os.makedirs(llm_logs_dir, exist_ok=True)
-            results["llm_metrics"] = self.llm.run()
+            if self.llm is None:
+                results["llm_metrics"] = {
+                    "success": False,
+                    "error_type": "stage_unavailable",
+                    "error_detail": (
+                        "LLM metric stage could not be initialized. "
+                        f"{self.llm_init_error or 'Unknown initialization error.'}"
+                    )
+                }
+            else:
+                results["llm_metrics"] = self.llm.run()
             with open(os.path.join(llm_logs_dir, "summary.json"), "w") as f:
                 json.dump(results["llm_metrics"], f, indent=4)
             status = "OK" if results["llm_metrics"].get("success") else "FAILED"

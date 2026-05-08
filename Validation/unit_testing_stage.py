@@ -1,10 +1,9 @@
-import json
 import os
 import re
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from openai import OpenAI
 
@@ -18,16 +17,18 @@ Main unit testing stage responsible for:
 - Running generated executables
 - Logging results
 """
-    def __init__(self, output_dir: str, project_root: str):
+    def __init__(self, output_dir: str, project_root: str, prompt_text: Optional[str] = None):
         """
         Initialize the unit testing stage.
 
         Parameters:
             output_dir  -> directory used for generated tests/results
             project_root -> root directory of the project being tested
+            prompt_text -> original user request used to guide unit test generation
         """
         self.project_root = os.path.abspath(project_root)
         self.output_dir = os.path.abspath(output_dir)
+        self.prompt_text = prompt_text.strip() if prompt_text else None
 
         self.generated_code_dir = self.project_root
         self.unit_test_dir = self.output_dir
@@ -35,6 +36,10 @@ Main unit testing stage responsible for:
         os.makedirs(self.output_dir, exist_ok=True)
 
         self._function_cache: Dict[str, Set[str]] = {}
+
+    def set_prompt_text(self, prompt_text: Optional[str]) -> None:
+        """Update the user request used to steer unit test generation."""
+        self.prompt_text = prompt_text.strip() if prompt_text else None
 
     def run(self) -> Dict:
         """
@@ -101,33 +106,21 @@ Main unit testing stage responsible for:
             code = Path(source_path).read_text(encoding="utf-8", errors="ignore")
             functions_in_file = self._extract_functions_from_code({relative_name: code})
 
-            prompt = f"""
-You are a strict C unit test generator that ensures comprehensive test coverage.
-
-CRITICAL REQUIREMENTS:
-- Include <assert.h>, <stdio.h>, <stdlib.h>, <limits.h>, <string.h>, <ctype.h>, <math.h> as needed
-- If the test uses malloc(), free(), calloc(), realloc(), or exit(), include <stdlib.h>
-- Do NOT use signal handling, sigaction(), sigemptyset(), sigsetjmp(), siglongjmp(), or SIGFPE.
-- Do NOT use POSIX file descriptor operations: dup(), fileno(), pipe(), fork(), or any function requiring <unistd.h>.
-- Use ONLY standard C99 library functions. All tests must compile with -std=c99 and no POSIX extensions.
-- Declare function prototypes if no header file exists.
-- Provide a main() function that returns 0 on success.
-- TEST ALL FUNCTIONS in the source file with multiple test cases.
-- Do NOT use markdown fences.
-- Output ONLY raw C code.
-
-AVAILABLE SOURCE FILES:
-{chr(10).join(f"- {fname}" for fname in all_source_code.keys())}
-
-FUNCTIONS TO TEST:
-{chr(10).join(f"- {func}" for func in functions_in_file.get(relative_name, set())) or "- All public functions"}
-
-C Source Code to Test:
-{code}
-
-Follow-up Code:
-{chr(10).join(f"// {fname}:{chr(10)}{content[:500]}..." for fname, content in list(all_source_code.items()) if fname != relative_name) if len(all_source_code) > 1 else "// No additional files"}
-"""
+            prompt = self._build_generation_prompt(
+                relative_name=relative_name,
+                source_code=code,
+                available_files=list(all_source_code.keys()),
+                functions_to_test=sorted(functions_in_file.get(relative_name, set())),
+                related_code=(
+                    chr(10).join(
+                        f"// {fname}:{chr(10)}{content[:500]}..."
+                        for fname, content in list(all_source_code.items())
+                        if fname != relative_name
+                    )
+                    if len(all_source_code) > 1
+                    else "// No additional files"
+                ),
+            )
 
             max_retries = 3
             test_code = None
@@ -163,6 +156,43 @@ Please regenerate the test and fix the compilation error.
 
                 test_code = response.choices[0].message.content or ""
                 test_code = self._strip_markdown_fences(test_code)
+                test_code = self._review_and_repair_test(
+                    client=client,
+                    model=model,
+                    test_code=test_code,
+                    source_relative_name=relative_name,
+                    source_code=code,
+                    available_files=list(all_source_code.keys()),
+                    functions_to_test=sorted(functions_in_file.get(relative_name, set())),
+                    related_code=(
+                        chr(10).join(
+                            f"// {fname}:{chr(10)}{content[:500]}..."
+                            for fname, content in list(all_source_code.items())
+                            if fname != relative_name
+                        )
+                        if len(all_source_code) > 1
+                        else "// No additional files"
+                    ),
+                )
+                if self._has_brittle_output_assertions(test_code):
+                    test_code = self._soften_brittle_output_assertions(
+                        client=client,
+                        model=model,
+                        test_code=test_code,
+                        source_relative_name=relative_name,
+                        source_code=code,
+                        available_files=list(all_source_code.keys()),
+                        functions_to_test=sorted(functions_in_file.get(relative_name, set())),
+                        related_code=(
+                            chr(10).join(
+                                f"// {fname}:{chr(10)}{content[:500]}..."
+                                for fname, content in list(all_source_code.items())
+                                if fname != relative_name
+                            )
+                            if len(all_source_code) > 1
+                            else "// No additional files"
+                        ),
+                    )
 
                 if not self._looks_like_c_test_code(test_code):
                     last_error = "Generated output does not look like valid C test code."
@@ -191,6 +221,216 @@ Please regenerate the test and fix the compilation error.
             os.makedirs(self.unit_test_dir, exist_ok=True)
             Path(output_path).write_text(test_code, encoding="utf-8")
             print(f"Generated tests for {relative_name}, saved to {output_path}")
+
+    def _build_generation_prompt(
+        self,
+        relative_name: str,
+        source_code: str,
+        available_files: List[str],
+        functions_to_test: List[str],
+        related_code: str,
+    ) -> str:
+        user_request = self.prompt_text or "No original user request was provided."
+        function_lines = chr(10).join(f"- {func}" for func in functions_to_test) or "- All public functions"
+        file_lines = chr(10).join(f"- {fname}" for fname in available_files)
+
+        return f"""
+You are a strict C unit test generator that ensures comprehensive test coverage.
+
+CRITICAL REQUIREMENTS:
+- Include <assert.h>, <stdio.h>, <stdlib.h>, <limits.h>, <string.h>, <ctype.h>, <math.h> as needed
+- If the test uses malloc(), free(), calloc(), realloc(), or exit(), include <stdlib.h>
+- Do NOT use signal handling, sigaction(), sigemptyset(), sigsetjmp(), siglongjmp(), or SIGFPE.
+- Do NOT use POSIX file descriptor operations: dup(), fileno(), pipe(), fork(), or any function requiring <unistd.h>.
+- Use ONLY standard C99 library functions. All tests must compile with -std=c99 and no POSIX extensions.
+- Include project headers when available, but never include project implementation files such as .c files.
+- Assume project source files are compiled and linked separately. Do not pull implementation code into the test with #include of source files.
+- Prefer testing behavior through the public API instead of relying on private struct layout or internal helper functions.
+- Declare function prototypes if no header file exists.
+- Provide a main() function that returns 0 on success.
+- TEST ALL FUNCTIONS in the source file with multiple test cases.
+- Do NOT use markdown fences.
+- Output ONLY raw C code.
+- Before writing each assertion, reason carefully about the program state after every prior operation.
+- Do not assert any state change, return value, output value, or side effect unless it follows directly from the implementation and the sequence of operations performed by the test.
+- Treat stateful APIs conservatively: verify transitions using the code's actual contract and control flow, not intuition.
+- Be especially careful about off-by-one errors, incorrect assumptions about ordering, stale state, invalid edge-case expectations, and mismatches between the prompt and the implementation.
+- For functions that print output, avoid brittle exact-format assertions unless the prompt or source code explicitly defines a required output format.
+- Prefer semantic output checks such as presence of key values, relative ordering, emptiness, or observable state changes over full-string equality on incidental whitespace or labels.
+
+ORIGINAL USER REQUEST:
+{user_request}
+
+Use the user request to infer expected behavior, edge cases, constraints, and safety properties.
+Prefer tests that check the contract implied by the request, not just superficial execution.
+
+AVAILABLE SOURCE FILES:
+{file_lines}
+
+FUNCTIONS TO TEST:
+{function_lines}
+
+C Source Code to Test:
+{source_code}
+
+Follow-up Code:
+{related_code}
+"""
+
+    def _review_and_repair_test(
+        self,
+        client: OpenAI,
+        model: str,
+        test_code: str,
+        source_relative_name: str,
+        source_code: str,
+        available_files: List[str],
+        functions_to_test: List[str],
+        related_code: str,
+    ) -> str:
+        """
+        Ask the LLM to critique the generated test for logical mistakes and repair it.
+
+        This does not guarantee perfect tests, but it catches many state-transition
+        mistakes before the test is accepted.
+        """
+        review_prompt = f"""
+You are a skeptical reviewer of C unit tests.
+
+Your job is to reject tests that compile but make incorrect logical assumptions.
+Be especially strict about:
+- incorrect assertions about state after sequences of operations
+- off-by-one errors
+- incorrect assumptions about ordering, mutation, persistence, or reset behavior
+- assertions about counters, indexes, lengths, flags, capacities, or output values that are not justified by the code
+- asserting behavior that is not supported by the provided source code or user request
+- including project implementation files such as .c files instead of headers
+- relying on private implementation details when the public API is sufficient
+- brittle exact stdout assertions that depend on incidental formatting, labels, spacing, or newline style rather than required behavior
+
+Review the candidate test below against the source code and the original request.
+If you find any logical mistake, rewrite the full test so the logic is correct.
+If the test is already logically sound, return it unchanged.
+
+Return ONLY raw C code. Do NOT explain your reasoning. Do NOT use markdown fences.
+
+ORIGINAL USER REQUEST:
+{self.prompt_text or "No original user request was provided."}
+
+SOURCE FILE UNDER TEST:
+{source_relative_name}
+
+FUNCTIONS TO TEST:
+{chr(10).join(f"- {func}" for func in functions_to_test) or "- All public functions"}
+
+AVAILABLE SOURCE FILES:
+{chr(10).join(f"- {fname}" for fname in available_files)}
+
+C SOURCE CODE TO TEST:
+{source_code}
+
+FOLLOW-UP CODE:
+{related_code}
+
+CANDIDATE TEST CODE:
+{test_code}
+"""
+
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a rigorous reviewer of unit tests. "
+                        "You must correct logical mistakes in stateful tests before they are accepted."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": review_prompt
+                }
+            ],
+            temperature=0.0
+        )
+
+        reviewed_code = response.choices[0].message.content or ""
+        reviewed_code = self._strip_markdown_fences(reviewed_code)
+        return reviewed_code or test_code
+
+    def _soften_brittle_output_assertions(
+        self,
+        client: OpenAI,
+        model: str,
+        test_code: str,
+        source_relative_name: str,
+        source_code: str,
+        available_files: List[str],
+        functions_to_test: List[str],
+        related_code: str,
+    ) -> str:
+        """
+        Rewrite tests that overfit incidental stdout formatting.
+
+        This preserves meaningful output checks while avoiding failures caused by
+        unspecified labels, spacing, or newline style.
+        """
+        review_prompt = f"""
+You are reviewing a C unit test for brittle output assertions.
+
+Your job is to rewrite the test only if it relies on exact stdout formatting
+that is not explicitly required by the user request or the source code.
+
+Rules:
+- Keep strong behavioral assertions.
+- If output format is not explicitly specified, do NOT require exact whole-string equality on labels, spacing, or newline layout.
+- Prefer checking for key values, relative ordering, emptiness, or other semantic properties.
+- If exact formatting is clearly part of the contract, preserve exact checks.
+- Return ONLY raw C code. Do NOT explain your reasoning. Do NOT use markdown fences.
+
+ORIGINAL USER REQUEST:
+{self.prompt_text or "No original user request was provided."}
+
+SOURCE FILE UNDER TEST:
+{source_relative_name}
+
+FUNCTIONS TO TEST:
+{chr(10).join(f"- {func}" for func in functions_to_test) or "- All public functions"}
+
+AVAILABLE SOURCE FILES:
+{chr(10).join(f"- {fname}" for fname in available_files)}
+
+C SOURCE CODE TO TEST:
+{source_code}
+
+FOLLOW-UP CODE:
+{related_code}
+
+CANDIDATE TEST CODE:
+{test_code}
+"""
+
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a rigorous reviewer of unit tests. "
+                        "Reduce brittle output-format assertions while preserving real behavioral checks."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": review_prompt
+                }
+            ],
+            temperature=0.0
+        )
+
+        softened_code = response.choices[0].message.content or ""
+        softened_code = self._strip_markdown_fences(softened_code)
+        return softened_code or test_code
 
     def run_generated_tests(self, generated_code_dir: str, unit_test_dir: str) -> Dict:
         """
@@ -286,6 +526,20 @@ Please regenerate the test and fix the compilation error.
 
         for test_path in test_files:
             test_file_name = os.path.basename(test_path)
+            test_code = Path(test_path).read_text(encoding="utf-8", errors="ignore")
+
+            included_sources = self._find_included_project_sources(test_code, generated_code_dir)
+            if included_sources:
+                results["errors"].append({
+                    "stage": "test_structure",
+                    "file": test_file_name,
+                    "message": (
+                        "Generated test includes project implementation file(s), which would "
+                        "cause duplicate definitions when source objects are linked separately: "
+                        + ", ".join(included_sources)
+                    )
+                })
+                continue
 
             source_path = self._match_test_to_source(test_file_name, generated_code_dir)
 
@@ -544,6 +798,47 @@ Please regenerate the test and fix the compilation error.
         required_signals = ["main(", "#include", "assert"]
         return all(signal in text for signal in required_signals)
 
+    def _has_brittle_output_assertions(self, test_code: str) -> bool:
+        """
+        Heuristically detect tests that overfit exact captured stdout formatting.
+        """
+        captures_stdout = "capture_stdout" in test_code or "tmpfile()" in test_code
+        exact_string_compare = (
+            "strcmp(output, expected)" in test_code
+            or "strcmp(expected, output)" in test_code
+            or "strncmp(output, expected" in test_code
+            or "strncmp(expected, output" in test_code
+        )
+        return captures_stdout and exact_string_compare
+
+    def _find_included_project_sources(self, test_code: str, generated_code_dir: str) -> List[str]:
+        """
+        Return project source files that are directly included by the test.
+
+        Tests should include headers, not implementation files, because the stage
+        compiles source files separately and links them afterward.
+        """
+        source_files = {
+            self._relative_path(path, generated_code_dir).replace("\\", "/").lower()
+            for path in self._collect_c_files(generated_code_dir)
+        }
+        include_pattern = re.compile(r'^\s*#\s*include\s*"([^"]+)"', re.MULTILINE)
+        included_sources = []
+
+        for include_target in include_pattern.findall(test_code):
+            normalized = include_target.replace("\\", "/").lower()
+            if not normalized.endswith(".c"):
+                continue
+
+            basename = os.path.basename(normalized)
+            if normalized in source_files or any(
+                path == basename or path.endswith("/" + basename)
+                for path in source_files
+            ):
+                included_sources.append(include_target)
+
+        return sorted(set(included_sources))
+
     def _validate_generated_test(self, test_code: str, generated_code_dir: str) -> None:
         """
         Compile generated test code before saving it to disk.
@@ -551,6 +846,14 @@ Please regenerate the test and fix the compilation error.
         Raises:
             RuntimeError if the generated test fails compilation.
         """
+        included_sources = self._find_included_project_sources(test_code, generated_code_dir)
+        if included_sources:
+            raise RuntimeError(
+                "Generated test code includes project implementation file(s), which would cause "
+                "duplicate definitions when source objects are linked separately: "
+                + ", ".join(included_sources)
+            )
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=".c", mode="w", encoding="utf-8") as tmp:
             tmp.write(test_code)
             tmp_path = tmp.name

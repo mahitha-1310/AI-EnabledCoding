@@ -10,6 +10,8 @@ import json
 import uuid
 import io
 import os
+import stat
+import time
 
 _STREAM_KEYS = {"stdout", "stderr"}
 
@@ -77,11 +79,16 @@ class _PathData:
         self.testing_path = os.path.join(self.workshop_path, "testing")
         self.output_path =  os.path.join(self.workshop_path, "output")
         self.result_path =  os.path.join(self.workshop_path, "result")
+        self.workspace_dirs = [
+            self.input_path,
+            self.test_path,
+            self.editor_path,
+            self.testing_path,
+            self.output_path,
+            self.result_path,
+        ]
 
-        for path in [
-            self.input_path, self.test_path, self.editor_path,
-            self.testing_path, self.output_path, self.result_path
-        ]:
+        for path in self.workspace_dirs:
             os.makedirs(project_path(path), exist_ok=True)
 
         SYSTEM_PROMPT =        os.path.join(self.prompts_path, "system_prompt.md")
@@ -168,14 +175,74 @@ def write_files(file_list: list[str], target_dir: str) -> None:
 
 def clear_directory(directory: str) -> bool:
     """Remove all contents of *directory* without deleting the directory itself."""
-    path = Path(directory)
+    path = project_path(directory)
     if not path.exists():
         return False
-    for item in path.iterdir():
-        if item.is_file() or item.is_symlink():
-            item.unlink()
-        elif item.is_dir():
-            shutil.rmtree(item)
+
+    def _make_writable(target: Path) -> None:
+        try:
+            os.chmod(target, stat.S_IWRITE)
+        except OSError:
+            pass
+
+    def _is_empty(target: Path) -> bool:
+        try:
+            next(target.iterdir())
+        except StopIteration:
+            return True
+        return False
+
+    def _has_remaining_files(target: Path) -> bool:
+        for item in target.iterdir():
+            if item.is_dir() and not item.is_symlink():
+                if _has_remaining_files(item):
+                    return True
+            else:
+                return True
+        return False
+
+    def _unlink_file(target: Path) -> None:
+        last_error = None
+        for attempt in range(3):
+            try:
+                target.unlink()
+                return
+            except FileNotFoundError:
+                return
+            except PermissionError as exc:
+                _make_writable(target)
+                last_error = exc
+                time.sleep(0.1 * (attempt + 1))
+        if last_error is not None:
+            raise last_error
+
+    def _remove_dir_if_possible(target: Path) -> None:
+        last_error = None
+        for attempt in range(3):
+            try:
+                target.rmdir()
+                return
+            except FileNotFoundError:
+                return
+            except (PermissionError, OSError) as exc:
+                _make_writable(target)
+                if _has_remaining_files(target):
+                    raise exc
+                last_error = exc
+                time.sleep(0.1 * (attempt + 1))
+
+        if last_error is not None and target.exists() and _has_remaining_files(target):
+            raise last_error
+
+    def _clear_tree(target: Path) -> None:
+        for item in list(target.iterdir()):
+            if item.is_dir() and not item.is_symlink():
+                _clear_tree(item)
+                _remove_dir_if_possible(item)
+            else:
+                _unlink_file(item)
+
+    _clear_tree(path)
     return True
 
 def clear_directories(directories: list[str]) -> Dict[str, bool]:

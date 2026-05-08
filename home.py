@@ -71,11 +71,11 @@ def codebase_download():
             st.error(f"Error creating zip: {str(e)}")
 
 def codebase_clear():
-    disable = not os.listdir(PATH.editor_path) and not os.listdir(PATH.input_path)
+    disable = not any(os.listdir(path) for path in PATH.workspace_dirs)
     text = "Nothing to Clear" if disable else "Clear Codebase"
     if st.button(text, disabled=disable, use_container_width=True):
         try:
-            clear_directory(PATH.workshop_path)
+            clear_directories(PATH.workspace_dirs)
             st.success("Directory cleared successfully!")
             st.rerun()
         except Exception as e:

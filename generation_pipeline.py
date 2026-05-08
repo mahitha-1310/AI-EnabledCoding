@@ -13,6 +13,9 @@ from config import HasaimConfiguration
 from tools import *
 from utils import *
 
+from dotenv import load_dotenv
+load_dotenv()
+
 class State(TypedDict):
         messages: Annotated[list[BaseMessage], add_messages]
         summaries: list[BaseMessage]
@@ -258,6 +261,8 @@ class Pipeline():
 
         if not self.graph:
             self.build(MemorySaver())
+
+        self.validator.set_prompt_text(user_input)
 
         response = self.graph.invoke(
             {"messages": [HumanMessage(content=user_input)]},
