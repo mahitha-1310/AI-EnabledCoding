@@ -298,17 +298,32 @@ _ALLOWED_EXTENSIONS = {".c", ".h"}
 _ALLOWED_FILENAMES  = {"Makefile", "makefile", "GNUmakefile"}
 
 def file_uploader(path: str, label: str):
+    state_key = f"uploaded_{label.replace(' ', '_')}"
+    if state_key not in st.session_state:
+        st.session_state[state_key] = []
+
     uploaded_files = st.file_uploader(
         label=label,
-        accept_multiple_files=True
+        accept_multiple_files=True,
     )
-    
+
     if not uploaded_files:
         return
-    
+
+    uploaded_files = uploaded_files if isinstance(uploaded_files, list) else [uploaded_files]
+
+    new_names = {f.name for f in uploaded_files}
+
+    removed = set(st.session_state[state_key]) - new_names
+    for fname in removed:
+        try:
+            os.remove(os.path.join(path, fname))
+        except Exception as e:
+            st.error(f"Failed to delete removed file '{fname}': {e}")
+
     for uploaded_file in uploaded_files:
         name = uploaded_file.name
-        ext  = os.path.splitext(name)[1].lower()
+        ext = os.path.splitext(name)[1].lower()
 
         if ext not in _ALLOWED_EXTENSIONS and name not in _ALLOWED_FILENAMES:
             st.warning(
@@ -317,13 +332,14 @@ def file_uploader(path: str, label: str):
             continue
 
         try:
-            file_path = os.path.join(path, name)
             os.makedirs(path, exist_ok=True)
+            file_path = os.path.join(path, name)
             with open(file_path, "wb") as f:
                 f.write(uploaded_file.getbuffer())
         except Exception as e:
             st.error(f"Failed to upload '{name}': {str(e)}")
             continue
+    st.session_state[state_key] = list(new_names)
 
 if __name__ == "__main__":
 
