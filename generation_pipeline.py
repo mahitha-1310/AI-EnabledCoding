@@ -64,14 +64,15 @@ class Pipeline():
         ).bind_tools(model_tools)
 
         # Path init
-        self.paths = get_user_paths(user_id)
+        self.paths = get_user_paths(self.user_id)
         # Pipeline init
         self.graph = self._build(_get_checkpointer())
         print(self.graph.get_graph().draw_ascii())
         # Validation init
         self.validator = ValidationPipeline(
-            output_dir=project_path(self.paths.testing_path),
-            source_dir=project_path(self.paths.editor_path)
+            output_dir=project_path(self.paths.output_path),
+            source_dir=project_path(self.paths.editor_path),
+            user_id=user_id
         )
         # RAG init
         self.rag = RAGRetriever()
@@ -162,7 +163,7 @@ class Pipeline():
         if attempts_left is None:
             attempts_left = self.model_config.get("return_anyway_after")-1
             # Clear stale unit test artifacts so tests are regenerated for the current code
-            unit_test_artifacts = os.path.join(get_user_paths().testing_path, "artifacts", "unit_testing")
+            unit_test_artifacts = os.path.join(get_user_paths(self.user_id).testing_path, "artifacts", "unit_testing")
             if os.path.isdir(unit_test_artifacts):
                 shutil.rmtree(unit_test_artifacts)
         else:
@@ -217,12 +218,12 @@ class Pipeline():
                 stage_lines.append(f"  {stage}: {'OK' if ok else 'FAILED (warnings only — code was accepted)'}")
         validation_summary = "\n".join(stage_lines) if stage_lines else "  (no validation data)"
 
-        final_prompt = get_user_paths().validation_message.replace("{validation_summary}", validation_summary)
+        final_prompt = get_user_paths(self.user_id).validation_message.replace("{validation_summary}", validation_summary)
 
         history = state.get("summarized_messages") or state["messages"]
         try:
             response = self.model.invoke(
-                [SystemMessage(content=get_user_paths().system_message)] + history + [HumanMessage(content=final_prompt)]
+                [SystemMessage(content=get_user_paths(self.user_id).system_message)] + history + [HumanMessage(content=final_prompt)]
             )
         except APITimeoutError:
             print("[Pipeline] WARNING: Model request timed out during final response.")

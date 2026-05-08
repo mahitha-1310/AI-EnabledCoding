@@ -133,9 +133,9 @@ def chatbot():
                 st.error(f"Critical error: {str(e)}")
                 print(f"Critical error traceback: {traceback.format_exc()}")
 
-def download(path, downloadable_name:str):
+def download_codebase(path):
     disable = only_folders(path)
-    text = f"No {downloadable_name} to Download" if disable else f"Download {downloadable_name}"
+    text = f"Nothing to Download" if disable else f"Download Codebase"
     st.download_button(
         label=text,
         data=create_zip(project_path(path)),
@@ -360,11 +360,7 @@ if __name__ == "__main__":
             file_uploader(project_path(user_paths.test_path), "Upload Unit Tests")
         with cr:
             pipeline_customize(pipeline=pipeline)
-            code_col, logs_col = st.columns(2)
-            with code_col:
-                download(user_paths.output_path, "Codebase")
-            with logs_col:
-                download(user_paths.testing_path, "Logs")
+            download_codebase(user_paths.output_path)
             codebase_clear(user_paths)
     with edit_col:
         chatbot()

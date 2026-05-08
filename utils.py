@@ -5,6 +5,46 @@ from dotenv import load_dotenv
 import streamlit as st, zipfile, shutil, json, uuid, io, os
 
 _STREAM_KEYS = {"stdout", "stderr"}
+_GLOBAL_PROMPTS = None
+
+class _PathData:
+    def __init__(self, user_id: str = None):
+        self.summary_path = os.path.join("logs", "summary.json")
+        self.prompts_path = "prompts"
+        self.workshop_path = "workshop"
+        
+        if user_id:
+            user_session_path = os.path.join("sessions", user_id)
+        else:
+            user_session_path = self.workshop_path
+
+        self.input_path =   os.path.join(user_session_path, "input")
+        self.test_path =    os.path.join(user_session_path, "test")
+        self.editor_path =  os.path.join(user_session_path, "editor")
+        self.output_path =  os.path.join(user_session_path, "output")
+
+        for path in [self.input_path, self.test_path, self.editor_path, self.output_path]:
+            os.makedirs(project_path(path), exist_ok=True)
+
+        SYSTEM_PROMPT =        os.path.join(self.prompts_path, "system_prompt.md")
+        FEEDBACK_PROMPT =      os.path.join(self.prompts_path, "feedback_prompt.md")
+        STRUCTURE_PROMPT =     os.path.join(self.prompts_path, "structure_prompt.md")
+        SUMMARIZATION_PROMPT = os.path.join(self.prompts_path, "summarization_prompt.md")
+        VALIDATION_PROMPT =    os.path.join(self.prompts_path, "validation_prompt.md")
+
+        # Prompts
+        self.system_message = read_path(SYSTEM_PROMPT)
+        self.feedback_message = read_path(FEEDBACK_PROMPT)
+        self.structure_message = read_path(STRUCTURE_PROMPT)
+        self.summarization_message = read_path(SUMMARIZATION_PROMPT)
+        self.validation_message = read_path(VALIDATION_PROMPT)
+    
+    def make_dir(self, envvar: str):
+        if not os.getenv(envvar):
+            load_dotenv()
+        path = os.getenv(envvar)
+        os.makedirs(path, exist_ok=True)
+        return path
 
 def fmt_field(key: str, value: Any) -> str:
     """Format a single log field for human-readable .log files.
@@ -60,50 +100,6 @@ def project_path(path: str) -> Path:
         return p
     return Path(__file__).parent / p
 
-class _PathData:
-    def __init__(self, user_id: str = None):
-        self.summary_path = os.path.join("logs", "summary.json")
-        self.prompts_path = "prompts"
-        self.workshop_path = "workshop"
-        
-        if user_id:
-            user_session_path = os.path.join("sessions", user_id)
-        else:
-            user_session_path = self.workshop_path
-
-        self.input_path =   os.path.join(user_session_path, "input")
-        self.test_path =    os.path.join(user_session_path, "test")
-        self.editor_path =  os.path.join(user_session_path, "editor")
-        self.testing_path = os.path.join(user_session_path, "testing")
-        self.output_path =  os.path.join(user_session_path, "output")
-        self.result_path =  os.path.join(user_session_path, "result")
-
-        for path in [
-            self.input_path, self.test_path, self.editor_path,
-            self.testing_path, self.output_path, self.result_path
-        ]:
-            os.makedirs(project_path(path), exist_ok=True)
-
-        SYSTEM_PROMPT =        os.path.join(self.prompts_path, "system_prompt.md")
-        FEEDBACK_PROMPT =      os.path.join(self.prompts_path, "feedback_prompt.md")
-        STRUCTURE_PROMPT =     os.path.join(self.prompts_path, "structure_prompt.md")
-        SUMMARIZATION_PROMPT = os.path.join(self.prompts_path, "summarization_prompt.md")
-        VALIDATION_PROMPT =    os.path.join(self.prompts_path, "validation_prompt.md")
-
-        # Prompts
-        self.system_message = read_path(SYSTEM_PROMPT)
-        self.feedback_message = read_path(FEEDBACK_PROMPT)
-        self.structure_message = read_path(STRUCTURE_PROMPT)
-        self.summarization_message = read_path(SUMMARIZATION_PROMPT)
-        self.validation_message = read_path(VALIDATION_PROMPT)
-    
-    def make_dir(self, envvar: str):
-        if not os.getenv(envvar):
-            load_dotenv()
-        path = os.getenv(envvar)
-        os.makedirs(path, exist_ok=True)
-        return path
-
 def get_user_paths(user_id: str = None) -> _PathData:
     """Get or create path data for a specific user session."""
     if user_id is None:
@@ -111,12 +107,10 @@ def get_user_paths(user_id: str = None) -> _PathData:
     return _PathData(user_id)
 
 def get_global_prompts() -> _PathData:
-    global _global_prompts
-    if _global_prompts is None:
-        _global_prompts = _PathData()
-    return _global_prompts
-
-_global_prompts = None
+    global _GLOBAL_PROMPTS
+    if _GLOBAL_PROMPTS is None:
+        _GLOBAL_PROMPTS = _PathData()
+    return _GLOBAL_PROMPTS
 
 def get_path(path: str) -> Path:
     """Resolve a path relative to the EDITOR_PATH environment variable.
@@ -247,7 +241,6 @@ def build_tree(path: Path, max_depth: int | None, current_depth: int = 0) -> lis
         items.append({"error": "PermissionError"})
 
     return items
-
 
 def list_dir(directory: str, max_depth: int | None = None) -> Dict[str, Any]:
     """
