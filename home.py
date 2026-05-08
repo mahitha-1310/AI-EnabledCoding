@@ -107,7 +107,6 @@ def chatbot():
                 try:
                     clear_directory(user_paths.input_path)
                     transfer(source=user_paths.editor_path, destination=user_paths.output_path)
-                    transfer(source=user_paths.testing_path, destination=user_paths.output_path)
                 except Exception as cleanup_error:
                     print(f"Error during cleanup: {cleanup_error}")
                     st.warning("Some files may not have been properly transferred.")
@@ -145,14 +144,14 @@ def download_codebase(path):
         disabled=disable
     )
 
-def codebase_clear(user_paths):
-    disable = only_folders(project_path(user_paths.workshop_path))
+def codebase_clear(user_paths: str):
+    editor_path = project_path(user_paths.editor_path)
+    
+    disable = only_folders(editor_path)
     text = "Nothing to Clear" if disable else "Clear Codebase"
     if st.button(text, disabled=disable, use_container_width=True):
         try:
-            user_session_path = os.path.join(user_paths.workshop_path, "sessions", user_id)
-            if os.path.exists(user_session_path):
-                shutil.rmtree(user_session_path)
+            clear_directories([editor_path])
             st.success("Your workspace cleared successfully!")
             st.rerun()
         except Exception as e:

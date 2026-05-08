@@ -81,7 +81,7 @@ class Pipeline():
     ### ROUTERS ###
 
     def grading_router(self, state: State):
-        if grade(output_path=project_path(self.paths.testing_path)):
+        if grade(output_path=project_path(self.paths.output_path)):
             return "pass"
 
         attempts_left = state.get("attempts_left", 0)
@@ -163,7 +163,7 @@ class Pipeline():
         if attempts_left is None:
             attempts_left = self.model_config.get("return_anyway_after")-1
             # Clear stale unit test artifacts so tests are regenerated for the current code
-            unit_test_artifacts = os.path.join(get_user_paths(self.user_id).testing_path, "artifacts", "unit_testing")
+            unit_test_artifacts = os.path.join(get_user_paths(self.user_id).output_path, "artifacts", "unit_testing")
             if os.path.isdir(unit_test_artifacts):
                 shutil.rmtree(unit_test_artifacts)
         else:
@@ -298,7 +298,7 @@ class Pipeline():
         
         attempts_left = response.get("attempts_left", 0)
         
-        last_validation_failed = len(validations) > 0 and not grade(output_path=project_path(self.paths.testing_path))
+        last_validation_failed = len(validations) > 0 and not grade(output_path=project_path(self.paths.output_path))
         needs_retry_prompt = (
             self.model_config.get("retry_prompt") and
             attempts_left > 0 and
