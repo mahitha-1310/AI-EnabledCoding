@@ -45,5 +45,9 @@ ENV NAME=World
 # Disable Python output buffering so print() calls appear immediately in Docker logs
 ENV PYTHONUNBUFFERED=1
 
+# Suppress verbose transformers/huggingface_hub deprecation chatter
+ENV TRANSFORMERS_VERBOSITY=error
+ENV HF_HUB_VERBOSITY=error
+
 # Run streamlit when the container launches
 CMD ["uv", "run", "streamlit", "run", "home.py", "--server.port=8501", "--server.address=0.0.0.0"]

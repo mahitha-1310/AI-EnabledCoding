@@ -364,19 +364,4 @@ class Pipeline():
             {"configurable": {"thread_id": user_id}}
         )
 
-        last = response['messages'][-1]
-        if last.content:
-            return last.content
-
-        # Model returned no content — synthesize a summary from validation results
-        validations = response.get("validations", [])
-        if validations:
-            v = validations[-1]
-            lines = ["(The model produced no text response. Validation summary:)"]
-            for stage, result in v.items():
-                if isinstance(result, dict):
-                    ok = result.get("overall_success", result.get("success", "?"))
-                    lines.append(f"  {stage}: {'OK' if ok else 'FAILED'}")
-            return "\n".join(lines)
-
-        return "(No response generated.)"
+        return self._reflect(response)
