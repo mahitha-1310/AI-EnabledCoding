@@ -40,6 +40,17 @@ class FormattingStage:
             Dict containing results
         """
 
+        try:
+            subprocess.run(["clang-format", "--version"], capture_output=True, check=True, timeout=5)
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+            return {
+                "skipped": True,
+                "reason": "clang-format not found on system",
+                "overall_success": True,
+                "warning": "Formatting check skipped: clang-format is not installed",
+                "results": []
+            }
+
         if not source_files:
             raise ValueError("No source files provided to FormattingStage")
 
@@ -74,12 +85,13 @@ class FormattingStage:
                     capture_output=True,
                     text=True
                 )
-            except FileNotFoundError:
+            except Exception as e:
                 result = {
+                    "file": file_path,
                     "cmd": ' '.join(cmd),
                     "success": False,
                     "stdout": "",
-                    "stderr": "Error: 'clang-format' was not found.",
+                    "stderr": str(e),
                     "formatted_output": None
                 }
                 results.append(result)

@@ -9,62 +9,86 @@ from Validation.validation_pipeline import ValidationPipeline
 from langgraph.graph.message import add_messages
 from typing import Annotated
 from config import HasaimConfiguration
+from rag.rag_orchestrator import RAGRetriever
+from rag_manager import embed_repo
+import traceback as tb
 
 from tools import *
 from utils import *
 
 from dotenv import load_dotenv
 load_dotenv()
+_shared_checkpointer = None
+
+def _get_checkpointer():
+    global _shared_checkpointer
+    if _shared_checkpointer is None:
+        _shared_checkpointer = MemorySaver()
+    return _shared_checkpointer
 
 class State(TypedDict):
-        messages: Annotated[list[BaseMessage], add_messages]
-        summaries: list[BaseMessage]
-        structure: Dict[str, Any]
-        validations: list[Dict[str, Any]]
-        attempts_left: int
+    rag_url: str
+    rag_contents: str
+    messages: Annotated[list[BaseMessage], add_messages]
+    summaries: list[BaseMessage]
+    structure: Dict[str, Any]
+    validations: list[Dict[str, Any]]
+    attempts_left: int
 
 class Pipeline():
-    def __init__(self):
+    def __init__(self, user_id: str = None):
+        self.user_id = user_id
 
-        # Model init
-        self.config = HasaimConfiguration({
+
+        # Config init
+        self.model_config = HasaimConfiguration({
             "summarize_after": 20,
             "messages_to_keep": 10,
             "return_anyway_after": 3,
-            "retry_prompt": True
+            "retry_prompt": True,
+            "temperature": 0.3,
+            "timeout": 120
         })
+        self.rag_config = HasaimConfiguration({
+            "repository_url": "https://github.com/TheAlgorithms/C",
+            "retrieval_chunks": 6,
+            "batch_size": 64
+        })
+        
 
+        # Model init
         self._model_name = os.getenv("OPENAI_API_MODEL")
-        model_temperature = float(os.getenv("TEMPERATURE"))
         model_tools = list(TOOLS.values())
         self.model = ChatOpenAI(
             model=self._model_name,
-            temperature=model_temperature,
             base_url=os.getenv("OPENAI_API_BASE"),
-            timeout=int(os.getenv("MODEL_TIMEOUT", 120)),
-            max_retries=0
+            max_retries=10
         ).bind_tools(model_tools)
 
-        # Validation init
-        self.validator = ValidationPipeline(output_dir=PATH.testing_path, source_dir=PATH.editor_path)
+        # Path init
+        self.paths = get_user_paths(self.user_id)
         # Pipeline init
-        self.graph = self.build(MemorySaver())
+        self.graph = self._build(_get_checkpointer())
         print(self.graph.get_graph().draw_ascii())
-    
-    def get_model_name(self):
-        return self._model_name
+        # Validation init
+        self.validator = ValidationPipeline(
+            output_dir=project_path(self.paths.output_path),
+            source_dir=project_path(self.paths.editor_path),
+            user_id=user_id
+        )
+        # RAG init
+        self.rag = RAGRetriever()
+        self._embedded_url: str | None = None
 
     ### ROUTERS ###
 
     def grading_router(self, state: State):
-        if grade(output_path=PATH.testing_path):
+        if grade(output_path=project_path(self.paths.output_path)):
             return "pass"
-
-        # TODO: Determine how unit test successes/errors/crashes are handled!
 
         attempts_left = state.get("attempts_left", 0)
 
-        if not self.config["retry_prompt"] or attempts_left == 0:
+        if not self.model_config.get("retry_prompt") or attempts_left == 0:
             print("[WARNING]: Code is not guaranteed to be functional.")
             return "insufficient"
 
@@ -77,7 +101,7 @@ class Pipeline():
         return "validate"
     
     def summarization_router(self, state: State):
-        return "summarize" if len(state["messages"]) > self.config["summarize_after"] else "converse"
+        return "summarize" if len(state["messages"]) > self.model_config.get("summarize_after") else "converse"
 
 
     ###############
@@ -103,6 +127,7 @@ class Pipeline():
                     result = tool_fn.invoke(tool_args)
                 except Exception as e:
                     result = f"Error: {e}"
+                    tb.print_exc()
 
             tool_messages.append(ToolMessage(
                 content=str(result),
@@ -112,26 +137,35 @@ class Pipeline():
         return {"messages": tool_messages}
 
     def update_node(self, state: State):
+        url = self.rag_config.get("repository_url")
+        if url and url != self._embedded_url:
+            embed_repo(self.rag.collection, url, self.rag_config.get("batch_size"))
+            self._embedded_url = url
+
         print("[Pipeline] Updating project structure...")
-        project_structure = list_dir(PATH.editor_path)
+        project_structure = list_dir(self.paths.editor_path)
         tool_message = str.format(
-            PATH.structure_message,
+            self.paths.structure_message,
             directory_tree=json.dumps(project_structure["structure"], indent=4)
         )
 
-        trimmed = state["messages"][-self.config["summarize_after"]:]
+        trimmed = state["messages"][-self.model_config.get("summarize_after"):]
 
-        return {"structure": project_structure, "messages": trimmed + [SystemMessage(content=tool_message)]}
+        new_state = {"structure": project_structure, "messages": trimmed + [SystemMessage(content=tool_message)]}
+
+        if url:
+            new_state["rag_url"] = url
+
+        return new_state
 
     def validate_node(self, state: State):
         print("[Pipeline] Running validation pipeline...")
 
-        # Initialize attempts counter on first validation, then decrement on each retry
         attempts_left = state.get("attempts_left")
         if attempts_left is None:
-            attempts_left = self.config["return_anyway_after"]
+            attempts_left = self.model_config.get("return_anyway_after")-1
             # Clear stale unit test artifacts so tests are regenerated for the current code
-            unit_test_artifacts = os.path.join(PATH.testing_path, "artifacts", "unit_testing")
+            unit_test_artifacts = os.path.join(get_user_paths(self.user_id).output_path, "artifacts", "unit_testing")
             if os.path.isdir(unit_test_artifacts):
                 shutil.rmtree(unit_test_artifacts)
         else:
@@ -148,8 +182,8 @@ class Pipeline():
         print("[Pipeline] Summarizing conversation history...")
         messages = state["messages"]
 
-        summarize = messages[:-self.config["messages_to_keep"]]
-        preserve  = messages[-self.config["messages_to_keep"]:]
+        summarize = messages[:-self.model_config.get("messages_to_keep")]
+        preserve  = messages[-self.model_config.get("messages_to_keep"):]
 
         history = "\n".join(
             f"{msg.__class__.__name__}: {msg.content}"
@@ -157,7 +191,7 @@ class Pipeline():
             if msg.content and not isinstance(msg, SystemMessage)
         )
 
-        summary = self.model.invoke([HumanMessage(content=PATH.summarization_message.format(history=history))])
+        summary = self.model.invoke([HumanMessage(content=get_global_prompts().summarization_message.format(history=history))])
 
         summary_message = SystemMessage(
             content=f"[Conversation summary so far]: {summary.content}"
@@ -167,10 +201,10 @@ class Pipeline():
 
     def sendback_node(self, state: State):
         print("[Pipeline] Sending validation feedback back to model...")
-        # TODO: Obtain relevant validation logs/jsons!
+        
         summary_json = json.dumps(state.get("validations", [{}])[-1])
 
-        response = self.model.invoke([HumanMessage(content=PATH.feedback_message.format(summary=summary_json))])
+        response = self.model.invoke([HumanMessage(content=get_global_prompts().feedback_message.format(summary=summary_json))])
 
         return {"messages": [SystemMessage(content=response.content)]}
 
@@ -186,21 +220,12 @@ class Pipeline():
                 stage_lines.append(f"  {stage}: {'OK' if ok else 'FAILED (warnings only — code was accepted)'}")
         validation_summary = "\n".join(stage_lines) if stage_lines else "  (no validation data)"
 
-        final_prompt = (
-            "All work is complete. Validation pipeline results:\n"
-            f"{validation_summary}\n\n"
-            "Now deliver your final response to the user. "
-            "Follow the 7-step Response Template from your system instructions exactly — "
-            "cover what files you found, the project structure, what the user requested, "
-            "how you planned and implemented the solution (file by file), any caveats, "
-            "and how to verify the result. "
-            "Do NOT use any tools. Do NOT give a one-line summary."
-        )
+        final_prompt = get_user_paths(self.user_id).validation_message.replace("{validation_summary}", validation_summary)
 
         history = state.get("summarized_messages") or state["messages"]
         try:
             response = self.model.invoke(
-                [SystemMessage(content=PATH.system_message)] + history + [HumanMessage(content=final_prompt)]
+                [SystemMessage(content=get_user_paths(self.user_id).system_message)] + history + [HumanMessage(content=final_prompt)]
             )
         except APITimeoutError:
             print("[Pipeline] WARNING: Model request timed out during final response.")
@@ -210,17 +235,87 @@ class Pipeline():
 
     def converse_node(self, state: State):
         print("[Pipeline] Model is generating a response...")
-        history = state.get("summarized_messages") or state["messages"]
+
         try:
-            response = self.model.invoke([SystemMessage(content=PATH.system_message)] + history)
+            self.model.bind(temperature=self.model_config.get("temperature"), timeout=self.model_config.get("timeout"))
+        except Exception:
+            tb.print_exc()
+
+        state_updates = {}
+        response = None
+        
+        try:
+            history = state.get("summarized_messages") or state["messages"]
+
+            rag_data = ""
+            if state.get("rag_url") is not None:
+                last_human = next(
+                    (msg for msg in reversed(history) if isinstance(msg, HumanMessage) and msg.content),
+                    None
+                )
+                if last_human:
+                    new_data = self.rag.retrieve(last_human.content, self.rag_config.get("retrieval_chunks"))
+                    rag_data = self.rag.build_context(new_data)
+                    state_updates["rag_contents"] = rag_data
+            else:
+                state_updates["rag_contents"] = None
+            
+            response = self.model.invoke(
+                [SystemMessage(content=get_global_prompts().system_message.replace("{RAGDATA}", rag_data))] + history
+            )
         except APITimeoutError:
             print("[Pipeline] WARNING: Model request timed out.")
             response = AIMessage(content="[Error: the model timed out and could not produce a response. Please try again.]")
-        return {"messages": [response]}
+        except Exception as e:
+            print(f"[Pipeline] ERROR: Failed to generate response: {e}")
+            tb.print_exc()
+            response = AIMessage(content=f"[Error: Failed to generate response: {str(e)}]")
+        
+        if response is None:
+            response = AIMessage(content="[Error: No response generated. Please try again.]")
+
+        state_updates["messages"] = [response]
+        return state_updates
 
     #############
+    
+    def _reflect(self, response):
+        last = response['messages'][-1]
+        response_text = ""
+        validations = response.get("validations", [])
+        
+        if last.content:
+            response_text = last.content
+        else:
+            if validations:
+                v = validations[-1]
+                lines = ["The model produced no text response. Validation summary:"]
+                for stage, result in v.items():
+                    if isinstance(result, dict):
+                        ok = result.get("overall_success", result.get("success", "?"))
+                        lines.append(f"  {stage}: {'OK' if ok else 'FAILED'}")
+                response_text = "\n".join(lines)
+            else:
+                response_text = "No response generated."
+        
+        attempts_left = response.get("attempts_left", 0)
+        
+        last_validation_failed = len(validations) > 0 and not grade(output_path=project_path(self.paths.output_path))
+        needs_retry_prompt = (
+            self.model_config.get("retry_prompt") and
+            attempts_left > 0 and
+            last_validation_failed
+        )
+        
+        metadata = {
+            "attempts_left": attempts_left,
+            "needs_retry_prompt": needs_retry_prompt,
+            "validations_count": len(validations)
+        }
 
-    def build(self, checkpointer):
+        return response_text, metadata
+
+    def _build(self, checkpointer):
         graph_builder = StateGraph(State)
 
         # NODES

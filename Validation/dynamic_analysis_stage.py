@@ -50,18 +50,36 @@ class DynamicAnalysisStage:
         if not tools:
             tools = ["memcheck"]
 
+        try:
+            subprocess.run(["valgrind", "--version"], capture_output=True, check=True, timeout=5)
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+            return {
+                "skipped": True,
+                "reason": "valgrind not found on system",
+                "overall_success": True,
+                "warning": "Dynamic analysis skipped: valgrind is not installed"
+            }
+
         executable_path = os.path.abspath(executable_path)
         tool_results: Dict[str, Any] = {}
 
         for tool in tools:
             cmd = ["valgrind", f"--tool={tool}", executable_path] + (flags or [])
-            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            tool_results[tool] = {
-                "cmd": " ".join(cmd),
-                "success": proc.returncode == 0,
-                "stdout": proc.stdout,
-                "stderr": proc.stderr
-            }
+            try:
+                proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                tool_results[tool] = {
+                    "cmd": " ".join(cmd),
+                    "success": proc.returncode == 0,
+                    "stdout": proc.stdout,
+                    "stderr": proc.stderr
+                }
+            except Exception as e:
+                tool_results[tool] = {
+                    "cmd": " ".join(cmd),
+                    "success": False,
+                    "stdout": "",
+                    "stderr": str(e)
+                }
 
         overall = all(r["success"] for r in tool_results.values())
         results = {**tool_results, "overall_success": overall}

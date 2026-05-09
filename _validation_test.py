@@ -3,9 +3,9 @@ import os
 import json
 
 # If testing LLMMetric make sure to add the sub directory as well.
-test_dir = input("Enter the `Test<#>/` directory to test: ")
+test_dir = input("Enter the `ValidationTests/Test<#>/` directory to test: ")
 
-if (not os.path.exists("ValidationTests/" + test_dir)) or (not test_dir.strip()):
+if (not os.path.exists(test_dir)) or (not test_dir.strip()):
     print(f"No directory named \"{test_dir}\" found.")
     exit()
 
