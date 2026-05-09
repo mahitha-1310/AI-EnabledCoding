@@ -23,7 +23,7 @@ If validation fails, the agent retries automatically (up to a configurable limit
 ### Prerequisites
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
-- Virginia Tech VPN connected ([VT VPN instructions](https://www.nis.vt.edu/ServicePortfolio/Network/RemoteAccess-VPN.html))
+- Virginia Tech VPN connected ([VT VPN instructions](https://www.nis.vt.edu/ServicePortfolio/Network/RemoteAccess-VPN.html)) _(this is due to the fact that we leverage a model hosted by VT ARC, and is thus a **hard requirement**; API calls will fail if you are not connected to the campus VPN)_
 
 ### Quick Start (Pre-built Image)
 
@@ -68,8 +68,6 @@ Navigate to **http://localhost:8501** in your browser.
 
 > **Note:** The first run may take a moment to start up while the container initializes.
 > The VT VPN must remain connected for the duration of your session.
-
----
 
 ### Building from Source
 
